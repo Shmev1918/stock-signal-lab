@@ -7,6 +7,7 @@ name = "stock-signal-lab"
 version = "0.1.0"
 description = "Personal stock observability and signal lab"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115",

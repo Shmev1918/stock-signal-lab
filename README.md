@@ -49,6 +49,10 @@ provider → ingestion → Postgres → signals → strategies → scores → ra
 - [Research Phase](docs/RESEARCH_PHASE.md)
 - [Data Provider Plan](docs/DATA_PROVIDER_PLAN.md)
 
+## License
+
+This project is released under the [MIT License](LICENSE).
+
 ## Local workflow
 
 ```bash
