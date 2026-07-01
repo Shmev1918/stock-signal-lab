@@ -1,4 +1,4 @@
-.PHONY: up down migrate test lint format refresh rankings evaluate status frontend-install frontend-dev ui reset-db
+.PHONY: up down migrate test lint format refresh rankings evaluate status frontend-install frontend-dev ui reset-db bootstrap reset-dev
 
 up:
 	docker compose up -d --build
@@ -44,3 +44,9 @@ reset-db:
 	docker compose down -v
 	docker compose up -d db
 	docker compose run --rm --build app alembic upgrade head
+
+bootstrap:
+	bash scripts/bootstrap-dev.sh
+
+reset-dev:
+	bash scripts/reset-dev.sh

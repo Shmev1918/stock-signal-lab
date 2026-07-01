@@ -48,10 +48,21 @@ provider → ingestion → Postgres → signals → strategies → scores → ra
 - [V1 Architecture Freeze](docs/V1_ARCHITECTURE_FREEZE.md)
 - [Research Phase](docs/RESEARCH_PHASE.md)
 - [Data Provider Plan](docs/DATA_PROVIDER_PLAN.md)
+- [Local Setup](docs/LOCAL_SETUP.md)
 
 ## License
 
 This project is released under the [MIT License](LICENSE).
+
+## Quick local setup
+
+For a fresh machine or a friend/brother tester, use:
+
+```bash
+bash scripts/bootstrap-dev.sh
+```
+
+Full instructions are in [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md).
 
 ## Local workflow
 
