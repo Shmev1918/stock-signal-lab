@@ -15,6 +15,7 @@
 - engine evaluation
 - local CLI
 - minimal frontend dashboard
+- experiment engine v1
 
 ## Current Priority
 
@@ -27,7 +28,6 @@
 - improve yfinance fundamentals warnings
 - evaluate Financial Modeling Prep free tier
 - add feature snapshots
-- add experiment engine
 - add hypothesis runner
 - later add ML experiment framework
 

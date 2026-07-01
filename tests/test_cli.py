@@ -26,6 +26,45 @@ def test_cli_parses_health() -> None:
     assert args.command == "health"
 
 
+def test_cli_parses_experiment_commands() -> None:
+    run_args = cli.build_parser().parse_args(
+        [
+            "run-experiment",
+            "--name",
+            "balanced_high_opportunity_180d",
+            "--experiment-type",
+            "strategy_score_threshold",
+            "--strategy-name",
+            "balanced",
+            "--horizon-days",
+            "180",
+            "--benchmark-ticker",
+            "SPY",
+            "--start-date",
+            "2020-01-01",
+            "--end-date",
+            "2025-01-01",
+            "--filters-json",
+            '{"min_opportunity_score": 70}',
+        ]
+    )
+    assert run_args.command == "run-experiment"
+    assert run_args.name == "balanced_high_opportunity_180d"
+    assert run_args.experiment_type == "strategy_score_threshold"
+    assert run_args.strategy_name == "balanced"
+    assert run_args.horizon_days == 180
+    assert run_args.benchmark_ticker == "SPY"
+    assert run_args.filters_json == '{"min_opportunity_score": 70}'
+
+    list_args = cli.build_parser().parse_args(["list-experiments", "--limit", "10"])
+    assert list_args.command == "list-experiments"
+    assert list_args.limit == 10
+
+    summary_args = cli.build_parser().parse_args(["experiment-summary", "--id", "12"])
+    assert summary_args.command == "experiment-summary"
+    assert summary_args.id == 12
+
+
 def test_cli_refresh_watchlist_json_output(monkeypatch, capsys) -> None:
     captured: dict[str, object] = {}
 
@@ -115,3 +154,62 @@ def test_cli_health_json_output(monkeypatch, capsys) -> None:
     assert payload["status"] == "ok"
     assert payload["database_reachable"] is True
     assert payload["active_provider"] == "mock"
+
+
+def test_cli_experiment_dispatch(monkeypatch, capsys) -> None:
+    calls: list[str] = []
+
+    def _run_experiment(session, request):
+        calls.append("run-experiment")
+        assert request.name == "balanced_high_opportunity_180d"
+        assert request.experiment_type == "strategy_score_threshold"
+        assert request.strategy_name == "balanced"
+        assert request.horizon_days == 180
+        return {"id": 1, "name": request.name}
+
+    def _list_experiments(session):
+        calls.append("list-experiments")
+        return [{"id": 1, "name": "balanced_high_opportunity_180d"}]
+
+    def _get_experiment_summary(session, experiment_id):
+        calls.append("experiment-summary")
+        assert experiment_id == 1
+        return {"experiment_id": experiment_id, "total_observations": 1}
+
+    monkeypatch.setattr(cli, "run_experiment", _run_experiment)
+    monkeypatch.setattr(cli, "list_experiments", _list_experiments)
+    monkeypatch.setattr(cli, "get_experiment_summary", _get_experiment_summary)
+
+    assert (
+        cli.main(
+            [
+                "run-experiment",
+                "--name",
+                "balanced_high_opportunity_180d",
+                "--experiment-type",
+                "strategy_score_threshold",
+                "--strategy-name",
+                "balanced",
+                "--horizon-days",
+                "180",
+                "--start-date",
+                "2020-01-01",
+                "--end-date",
+                "2025-01-01",
+            ],
+            session_scope=_fake_session_scope,
+        )
+        == 0
+    )
+    run_output = json.loads(capsys.readouterr().out)
+    assert run_output["id"] == 1
+
+    assert cli.main(["list-experiments"], session_scope=_fake_session_scope) == 0
+    list_output = json.loads(capsys.readouterr().out)
+    assert list_output[0]["name"] == "balanced_high_opportunity_180d"
+
+    assert cli.main(["experiment-summary", "--id", "1"], session_scope=_fake_session_scope) == 0
+    summary_output = json.loads(capsys.readouterr().out)
+    assert summary_output["experiment_id"] == 1
+
+    assert calls == ["run-experiment", "list-experiments", "experiment-summary"]

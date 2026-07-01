@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import select
 from sqlmodel import Session
+from sqlmodel import select
 
 from app.config import get_settings
 from app.db.models import DailyPrice, Experiment, ExperimentResult, StockScore
@@ -119,6 +119,33 @@ def _evaluate_score_candidate(
     )
 
 
+def _skipped_result(
+    experiment_id: int,
+    score: StockScore,
+    skip_reason: str,
+) -> ExperimentResult:
+    return ExperimentResult(
+        experiment_id=experiment_id,
+        ticker=score.ticker,
+        as_of_date=score.as_of_date,
+        strategy_name=score.strategy_name,
+        recommendation=score.recommendation,
+        risk_category=score.risk_category,
+        opportunity_score=score.opportunity_score,
+        risk_score=score.risk_score,
+        quality_score=score.quality_score,
+        valuation_score=score.valuation_score,
+        momentum_score=score.momentum_score,
+        future_price_date=None,
+        future_return=None,
+        benchmark_return=None,
+        excess_return=None,
+        outcome_label=None,
+        status="skipped",
+        skip_reason=skip_reason,
+    )
+
+
 def _evaluate_signal_candidate(
     session: Session,
     experiment_id: int,
@@ -136,10 +163,14 @@ def _evaluate_signal_candidate(
             signal_name=str(signal_name),
             signal_category=str(signal_category) if signal_category else None,
         )
-        if signal is None or not signal_matches_filters(signal, filters):
+        if signal is None:
+            return _skipped_result(experiment_id, score, "missing_signal")
+        if not signal_matches_filters(signal, filters):
             return None
     else:
         signals = get_latest_signals_at(session, score.ticker, score.as_of_date)
+        if not signals:
+            return _skipped_result(experiment_id, score, "missing_signals")
         signal = next((item for item in signals if signal_matches_filters(item, filters)), None)
         if signal is None:
             return None

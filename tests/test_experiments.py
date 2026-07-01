@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from sqlalchemy import select
 from sqlmodel import Session
 
 from app.db.models import DailyPrice, Experiment, ExperimentResult, Stock, StockScore, StockSignal
@@ -162,7 +163,7 @@ def test_strategy_score_threshold_experiment(client) -> None:
     with Session(engine) as session:
         persisted = session.get(Experiment, payload["id"])
         assert persisted is not None
-        rows = list(session.query(ExperimentResult).where(ExperimentResult.experiment_id == payload["id"]))  # type: ignore[attr-defined]
+        rows = list(session.exec(select(ExperimentResult).where(ExperimentResult.experiment_id == payload["id"])))
         assert rows
 
 
@@ -279,6 +280,48 @@ def test_signal_threshold_experiment(client) -> None:
     assert payload["results"][0]["outcome_label"] == OUTCOME_OUTPERFORM
 
 
+def test_signal_threshold_experiment_records_missing_signal_as_skipped(client) -> None:
+    with Session(engine) as session:
+        _seed_score(
+            session,
+            ticker="NOSIG",
+            as_of_date=date(2026, 1, 1),
+            strategy_name="balanced",
+            recommendation="WATCH",
+            risk_category="MEDIUM_RISK",
+            opportunity_score=50.0,
+        )
+        _seed_price(session, "NOSIG", date(2026, 1, 1), 100.0)
+        _seed_price(session, "NOSIG", date(2026, 4, 1), 105.0)
+        _seed_price(session, "SPY", date(2026, 1, 1), 100.0)
+        _seed_price(session, "SPY", date(2026, 4, 1), 102.0)
+
+    response = client.post(
+        "/experiments/run",
+        json={
+            "name": "signal_missing_test",
+            "experiment_type": "signal_threshold",
+            "strategy_name": "balanced",
+            "horizon_days": 90,
+            "benchmark_ticker": "SPY",
+            "start_date": "2026-01-01",
+            "end_date": "2026-12-31",
+            "filters": {
+                "signal_name": "free_cash_flow_positive",
+                "min_normalized_score": 70,
+            },
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_count"] == 1
+    result = payload["results"][0]
+    assert result["ticker"] == "NOSIG"
+    assert result["status"] == "skipped"
+    assert result["skip_reason"] == "missing_signal"
+    assert result["outcome_label"] is None
+
+
 def test_experiment_future_price_handling_and_no_leakage(client) -> None:
     with Session(engine) as session:
         _seed_score(
@@ -317,4 +360,3 @@ def test_experiment_future_price_handling_and_no_leakage(client) -> None:
     assert round(result["future_return"], 2) == 10.0
     assert round(result["benchmark_return"], 2) == 5.0
     assert round(result["excess_return"], 2) == 5.0
-

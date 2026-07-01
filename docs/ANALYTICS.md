@@ -34,10 +34,6 @@ experiments
 
 down arrow
 
-ML
-
-down arrow
-
 evaluation
 
 down arrow
@@ -54,6 +50,20 @@ continuous improvement
   - OUTPERFORM
   - NEUTRAL
   - UNDERPERFORM
+
+## Experiment Engine
+
+Before ML, the system needs a rigorous experiment harness.
+
+The experiment layer should:
+
+- replay historical scores and signals as of a past date
+- evaluate outcomes after fixed horizons
+- compare results against a benchmark like SPY
+- store result rows for later inspection
+- support strategy, recommendation, risk, and signal experiments
+
+The goal is to learn whether the existing signals and strategies have real predictive value before introducing more complex models.
 
 ## Walk-Forward Testing
 
