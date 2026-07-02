@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from datetime import date
 
 from sqlalchemy import func
 from sqlmodel import Session
@@ -13,7 +14,15 @@ from app.scoring.strategy_profiles import get_strategy_profile, list_strategy_pr
 from app.services.ingestion_service import ingest_ticker
 from app.services.scoring_service import score_ticker
 from app.services.signal_service import generate_signals as generate_signals_for_ticker
-from app.services.stock_service import get_latest_signals, get_stock, get_watchlist, get_watchlist_status, needs_ingest, upsert_watchlist_item
+from app.services.stock_service import (
+    get_latest_market_snapshot_date,
+    get_latest_signal_date_at,
+    get_stock,
+    get_watchlist,
+    get_watchlist_status,
+    needs_ingest,
+    upsert_watchlist_item,
+)
 
 
 def _count_rows(session: Session, statement) -> int:
@@ -94,11 +103,22 @@ def refresh_watchlist_workflow(
                     ingest_failed = True
                     failures.append({"ticker": ticker, "stage": "ingest", **ingest_result})
                     continue
-            if generate_signals and not get_latest_signals(session, ticker):
-                generate_signals_fn(session, ticker)
+            target_date = get_latest_market_snapshot_date(session, ticker) or date.today()
+            latest_signal_date = get_latest_signal_date_at(session, ticker, target_date)
+            should_generate_signals = generate_signals and (
+                ingest_attempted or latest_signal_date is None or latest_signal_date < target_date
+            )
+
+            def _call_with_optional_kwargs(fn, **kwargs):
+                params = inspect.signature(fn).parameters
+                call_kwargs = {key: value for key, value in kwargs.items() if key in params}
+                return fn(session, ticker, **call_kwargs)
+
+            if should_generate_signals:
+                _call_with_optional_kwargs(generate_signals_fn, as_of_date=target_date)
             if score:
                 for strategy_name in selected_strategies:
-                    score_fn(session, ticker, strategy_name=strategy_name)
+                    _call_with_optional_kwargs(score_fn, as_of_date=target_date, strategy_name=strategy_name)
             after_state = _ticker_refresh_state(session, ticker)
             partial_warnings = [str(item) for item in ingest_result.get("warnings", [])]
             ingested = bool(ingest_attempted and not ingest_failed)
@@ -106,7 +126,7 @@ def refresh_watchlist_workflow(
                 skipped_existing_data = True
             else:
                 skipped_existing_data = False
-            signals_generated = after_state["signal_count"] > before_state["signal_count"]
+            signals_generated = should_generate_signals and after_state["signal_count"] > before_state["signal_count"]
             signals_skipped_existing = not signals_generated and after_state["signal_count"] > 0
             scores_created = after_state["score_count"] > before_state["score_count"]
             scores_skipped_existing = not scores_created and after_state["score_count"] > 0

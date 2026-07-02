@@ -10,8 +10,10 @@ from typing import Any
 from sqlmodel import Session
 
 from app.db.session import engine, init_db
-from app.experiments.runner import ExperimentRequest, get_experiment_by_id, get_experiment_summary, list_experiments, run_experiment
+from app.experiments.runner import ExperimentRequest, get_experiment_summary, list_experiments, run_experiment
 from app.services.health_service import get_health_details
+from app.services.diagnostics_service import get_distribution_diagnostics
+from app.services.signal_diagnostics_service import get_signal_diagnostics
 from app.services.analysis_service import build_strategy_rankings
 from app.services.decision_service import get_decision_evaluation
 from app.services.score_evaluation_service import get_score_evaluation
@@ -72,6 +74,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     experiment_summary_cmd = subparsers.add_parser("experiment-summary", help="Show a summary for one experiment.")
     experiment_summary_cmd.add_argument("--id", type=int, required=True)
+
+    diagnostics = subparsers.add_parser("diagnostics-distributions", help="Show score and signal distributions.")
+    diagnostics.add_argument("--strategy-name", default=None)
+    diagnostics.add_argument("--signal-name", default=None)
+    diagnostics.add_argument("--signal-category", default=None)
+
+    signal_diagnostics = subparsers.add_parser("diagnostics-signals", help="Trace signal inputs and fallbacks for one ticker.")
+    signal_diagnostics.add_argument("--ticker", required=True)
+    signal_diagnostics.add_argument("--as-of-date", default=None)
 
     subparsers.add_parser("health", help="Show database and model health details.")
     subparsers.add_parser("status", help="Show watchlist status and data sources.")
@@ -149,6 +160,20 @@ def _run_experiment_summary(session: Session, args: argparse.Namespace) -> dict[
     return get_experiment_summary(session, args.id)
 
 
+def _run_diagnostics_distributions(session: Session, args: argparse.Namespace) -> dict[str, object]:
+    return get_distribution_diagnostics(
+        session,
+        strategy_name=args.strategy_name,
+        signal_name=args.signal_name,
+        signal_category=args.signal_category,
+    )
+
+
+def _run_diagnostics_signals(session: Session, args: argparse.Namespace) -> dict[str, object]:
+    as_of_date = date.fromisoformat(args.as_of_date) if args.as_of_date else None
+    return get_signal_diagnostics(session, args.ticker, as_of_date=as_of_date)
+
+
 def _dispatch(session: Session, args: argparse.Namespace) -> Any:
     if args.command == "refresh-watchlist":
         return _run_refresh_watchlist(session, args)
@@ -168,6 +193,10 @@ def _dispatch(session: Session, args: argparse.Namespace) -> Any:
         return _run_list_experiments(session, args)
     if args.command == "experiment-summary":
         return _run_experiment_summary(session, args)
+    if args.command == "diagnostics-distributions":
+        return _run_diagnostics_distributions(session, args)
+    if args.command == "diagnostics-signals":
+        return _run_diagnostics_signals(session, args)
     raise ValueError(f"Unknown command: {args.command}")
 
 

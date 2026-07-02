@@ -3,12 +3,15 @@ from __future__ import annotations
 from collections.abc import Generator
 import os
 from pathlib import Path
+import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./stock_signal_lab_test.db")
+TEST_DB_PATH = Path(tempfile.gettempdir()) / f"stock_signal_lab_test_{os.getpid()}.db"
+os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
+os.environ["MARKET_DATA_PROVIDER"] = "mock"
 
 from app.db.models import (  # noqa: E402
     BacktestResult,
@@ -26,9 +29,9 @@ from app.db.models import (  # noqa: E402
     StockSignal,
     WatchlistItem,
 )
-from app.db.session import engine, init_db
-from app.main import app
-from sqlmodel import Session
+from app.db.session import engine, init_db  # noqa: E402
+from app.main import app  # noqa: E402
+from sqlmodel import Session  # noqa: E402
 
 
 TABLES = [
@@ -51,8 +54,8 @@ TABLES = [
 
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_tables() -> None:
-    if Path("stock_signal_lab_test.db").exists():
-        Path("stock_signal_lab_test.db").unlink()
+    if TEST_DB_PATH.exists():
+        TEST_DB_PATH.unlink()
     SQLModel.metadata.drop_all(engine)
     init_db()
 

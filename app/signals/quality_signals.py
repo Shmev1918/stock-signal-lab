@@ -59,8 +59,18 @@ def build_quality_signals(fundamentals: Sequence[Fundamental]) -> list[SignalRec
         SignalRecord(
             name="free_cash_flow_positive",
             category="QUALITY",
-            raw_value=1.0 if latest and latest.free_cash_flow is not None and latest.free_cash_flow > 0 else 0.0 if latest else None,
-            normalized_score=boolean_score(bool(latest and latest.free_cash_flow is not None and latest.free_cash_flow > 0)),
+            raw_value=(
+                1.0
+                if latest and latest.free_cash_flow is not None and latest.free_cash_flow > 0
+                else 0.0
+                if latest and latest.free_cash_flow is not None
+                else None
+            ),
+            normalized_score=boolean_score(
+                None
+                if latest is None or latest.free_cash_flow is None
+                else latest.free_cash_flow > 0
+            ),
             weight=0.20,
             direction="HIGHER_IS_BETTER",
             confidence="MEDIUM" if latest else "LOW",

@@ -16,6 +16,8 @@ type RankingRow = {
   momentum_score: number
   risk_score: number
   summary: string
+  score_as_of_date?: string
+  scored_at?: string
   positive_signals?: any[]
   negative_signals?: any[]
 }
@@ -92,6 +94,7 @@ export default function RankingsTable({ strategies }: Props) {
             <tr>
               <th>Rank</th>
               <th>Ticker</th>
+              <th>As of</th>
               <th>Recommendation</th>
               <th>Risk</th>
               <th>Opportunity</th>
@@ -107,6 +110,12 @@ export default function RankingsTable({ strategies }: Props) {
               <tr key={row.ticker}>
                 <td>{row.rank}</td>
                 <td>{row.ticker}</td>
+                <td>
+                  <div className="stack">
+                    <span>{row.score_as_of_date || 'n/a'}</span>
+                    <span className="muted">{row.scored_at || 'n/a'}</span>
+                  </div>
+                </td>
                 <td>{row.recommendation}</td>
                 <td>{row.risk_category}</td>
                 <td>{row.opportunity_score.toFixed(1)}</td>

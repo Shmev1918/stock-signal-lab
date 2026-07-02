@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 
 from sqlalchemy import select
 from sqlmodel import Session
 
 from app.db.models import DailyPrice, Experiment, ExperimentResult, Stock, StockScore, StockSignal
 from app.db.session import engine
+from app.experiments.filters import normalize_filters
 from app.experiments.outcome import OUTCOME_NEUTRAL, OUTCOME_OUTPERFORM, OUTCOME_UNDERPERFORM, classify_outcome
 
 
@@ -98,6 +99,12 @@ def test_outcome_label_calculation() -> None:
     assert classify_outcome(-4.99) == OUTCOME_NEUTRAL
     assert classify_outcome(-5.0) == OUTCOME_UNDERPERFORM
     assert classify_outcome(None) is None
+
+
+def test_normalize_filters_aliases_momentum_signal_names() -> None:
+    assert normalize_filters({"signal_name": "momentum_3m"})["signal_name"] == "return_3m"
+    assert normalize_filters({"signal_name": "momentum_6m"})["signal_name"] == "return_6m"
+    assert normalize_filters({"signal_name": "momentum_12m"})["signal_name"] == "return_12m"
 
 
 def test_strategy_score_threshold_experiment(client) -> None:

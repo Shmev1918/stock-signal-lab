@@ -6,7 +6,15 @@ from app.db.models import StockScore, StockSignal
 
 
 def normalize_filters(filters: dict[str, Any] | None) -> dict[str, Any]:
-    return dict(filters or {})
+    normalized = dict(filters or {})
+    signal_name = normalized.get("signal_name")
+    if signal_name == "momentum_3m":
+        normalized["signal_name"] = "return_3m"
+    elif signal_name == "momentum_6m":
+        normalized["signal_name"] = "return_6m"
+    elif signal_name == "momentum_12m":
+        normalized["signal_name"] = "return_12m"
+    return normalized
 
 
 def _as_list(value: Any) -> list[str] | None:

@@ -49,6 +49,8 @@ provider → ingestion → Postgres → signals → strategies → scores → ra
 - [Research Phase](docs/RESEARCH_PHASE.md)
 - [Data Provider Plan](docs/DATA_PROVIDER_PLAN.md)
 - [Local Setup](docs/LOCAL_SETUP.md)
+- [Diagnostics](docs/DIAGNOSTICS.md)
+- [Baseline Experiment Report](docs/BASELINE_EXPERIMENT_REPORT.md)
 
 ## License
 
@@ -223,10 +225,12 @@ GET /strategies
 GET /analysis/AAPL?compact=true
 GET /analysis/AAPL/history?limit=30
 GET /analysis/AAPL/compare-strategies
+GET /diagnostics/distributions?strategy_name=balanced
 GET /rankings/strategies
 GET /export/rankings.csv?strategy=value_recovery&limit=25
 GET /export/signals/AAPL.csv
 GET /export/analysis-history/AAPL.csv
+GET /export/distributions.csv
 ```
 
 Strategy ranking examples:

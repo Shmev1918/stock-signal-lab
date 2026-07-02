@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from sqlmodel import Session
 
 from app.db.session import get_session
+from app.services.diagnostics_service import get_distribution_diagnostics
 from app.scoring.strategy_profiles import get_strategy_profile
 from app.services.analysis_service import build_analysis_history, build_strategy_rankings
 from app.services.stock_service import get_signal_history
@@ -17,14 +18,21 @@ from app.services.stock_service import get_stock
 router = APIRouter(prefix="/export")
 
 
-def _csv_response(filename: str, rows: list[dict[str, object]]) -> Response:
+def _csv_response(
+    filename: str,
+    rows: list[dict[str, object]],
+    fieldnames: list[str] | None = None,
+) -> Response:
     buffer = io.StringIO()
     if rows:
-        fieldnames = list(rows[0].keys())
-        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+        resolved_fieldnames = fieldnames or list(rows[0].keys())
+        writer = csv.DictWriter(buffer, fieldnames=resolved_fieldnames)
         writer.writeheader()
         for row in rows:
             writer.writerow({key: json.dumps(value, default=str) if isinstance(value, (dict, list)) else value for key, value in row.items()})
+    elif fieldnames:
+        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+        writer.writeheader()
     else:
         buffer.write("")
     return Response(
@@ -32,6 +40,36 @@ def _csv_response(filename: str, rows: list[dict[str, object]]) -> Response:
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _distribution_rows(payload: dict[str, object]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    score_rows = payload.get("scores", {})
+    if isinstance(score_rows, dict):
+        for metric_name, stats in score_rows.items():
+            if isinstance(stats, dict):
+                row = {"group_type": "score", "name": metric_name, "category": None}
+                row.update(stats)
+                rows.append(row)
+
+    recommendations = payload.get("recommendations", {})
+    if isinstance(recommendations, dict):
+        for value, count in recommendations.items():
+            rows.append({"group_type": "recommendation", "name": value, "count": count})
+
+    risk_categories = payload.get("risk_categories", {})
+    if isinstance(risk_categories, dict):
+        for value, count in risk_categories.items():
+            rows.append({"group_type": "risk_category", "name": value, "count": count})
+
+    signals = payload.get("signals", {})
+    if isinstance(signals, dict):
+        for signal_name, stats in signals.items():
+            if isinstance(stats, dict):
+                row = {"group_type": "signal", "name": signal_name, "category": stats.get("signal_category")}
+                row.update(stats)
+                rows.append(row)
+    return rows
 
 
 @router.get("/rankings.csv")
@@ -136,3 +174,46 @@ def export_analysis_history(
         for row in history
     ]
     return _csv_response(f"{ticker.upper()}-analysis-history.csv", rows)
+
+
+@router.get("/distributions.csv")
+def export_distributions(
+    strategy_name: str | None = Query(default=None),
+    signal_name: str | None = Query(default=None),
+    signal_category: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    payload = get_distribution_diagnostics(
+        session,
+        strategy_name=strategy_name,
+        signal_name=signal_name,
+        signal_category=signal_category,
+    )
+    rows = _distribution_rows(payload)
+    fieldnames = sorted({key for row in rows for key in row.keys()}) if rows else [
+        "group_type",
+        "name",
+        "category",
+        "count",
+        "available_count",
+        "min",
+        "max",
+        "mean",
+        "median",
+        "p10",
+        "p25",
+        "p50",
+        "p75",
+        "p90",
+        "signal_name",
+        "signal_category",
+        "always_0",
+        "always_50",
+        "always_100",
+        "has_variation",
+    ]
+    filename = "distributions.csv"
+    if strategy_name or signal_name or signal_category:
+        parts = [strategy_name or "all", signal_name or "all", signal_category or "all"]
+        filename = f"distributions-{'-'.join(parts)}.csv"
+    return _csv_response(filename, rows, fieldnames=fieldnames)

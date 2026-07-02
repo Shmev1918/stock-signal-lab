@@ -26,6 +26,23 @@ def test_cli_parses_health() -> None:
     assert args.command == "health"
 
 
+def test_cli_parses_diagnostics_distributions() -> None:
+    args = cli.build_parser().parse_args(
+        ["diagnostics-distributions", "--strategy-name", "balanced", "--signal-name", "volatility", "--signal-category", "RISK"]
+    )
+    assert args.command == "diagnostics-distributions"
+    assert args.strategy_name == "balanced"
+    assert args.signal_name == "volatility"
+    assert args.signal_category == "RISK"
+
+
+def test_cli_parses_diagnostics_signals() -> None:
+    args = cli.build_parser().parse_args(["diagnostics-signals", "--ticker", "AAPL", "--as-of-date", "2026-01-01"])
+    assert args.command == "diagnostics-signals"
+    assert args.ticker == "AAPL"
+    assert args.as_of_date == "2026-01-01"
+
+
 def test_cli_parses_experiment_commands() -> None:
     run_args = cli.build_parser().parse_args(
         [
@@ -154,6 +171,61 @@ def test_cli_health_json_output(monkeypatch, capsys) -> None:
     assert payload["status"] == "ok"
     assert payload["database_reachable"] is True
     assert payload["active_provider"] == "mock"
+
+
+def test_cli_diagnostics_distributions_json_output(monkeypatch, capsys) -> None:
+    def _get_distribution_diagnostics(session, **kwargs):
+        assert kwargs["strategy_name"] == "balanced"
+        assert kwargs["signal_name"] == "volatility"
+        assert kwargs["signal_category"] == "RISK"
+        return {
+            "filters": kwargs,
+            "scores": {"opportunity_score": {"count": 0}},
+            "recommendations": {},
+            "risk_categories": {},
+            "signals": {},
+            "signal_summary": {"always_0": [], "always_50": [], "always_100": [], "has_variation": []},
+            "counts": {"score_rows": 0, "signal_rows": 0},
+        }
+
+    monkeypatch.setattr(cli, "get_distribution_diagnostics", _get_distribution_diagnostics)
+    rc = cli.main(
+        ["diagnostics-distributions", "--strategy-name", "balanced", "--signal-name", "volatility", "--signal-category", "RISK"],
+        session_scope=_fake_session_scope,
+    )
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["filters"]["strategy_name"] == "balanced"
+    assert payload["counts"]["score_rows"] == 0
+
+
+def test_cli_diagnostics_signals_json_output(monkeypatch, capsys) -> None:
+    def _get_signal_diagnostics(session, ticker, as_of_date=None):
+        assert ticker == "AAPL"
+        assert as_of_date is None
+        return {
+            "ticker": "AAPL",
+            "as_of_date": "2026-01-01",
+            "signals": [
+                {
+                    "signal_name": "volatility",
+                    "signal_category": "RISK",
+                    "input_values": {"price_inputs": {"price_count": 10}, "fundamental_inputs": None},
+                    "raw_value": 0.2,
+                    "normalized_score": 34.0,
+                    "fallback_used": False,
+                    "fallback_reason": None,
+                    "source": "internal",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(cli, "get_signal_diagnostics", _get_signal_diagnostics)
+    rc = cli.main(["diagnostics-signals", "--ticker", "AAPL"], session_scope=_fake_session_scope)
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ticker"] == "AAPL"
+    assert payload["signals"][0]["signal_name"] == "volatility"
 
 
 def test_cli_experiment_dispatch(monkeypatch, capsys) -> None:

@@ -66,6 +66,10 @@ export default function StockAnalysis({ strategies }: Props) {
             <h3>
               {analysis.ticker} {analysis.recommendation} / {analysis.risk_category}
             </h3>
+            <div className="muted">
+              Strategy: {analysis.strategy_name} | Score as of: {analysis.latest_score?.as_of_date || 'n/a'} | Scored at:{' '}
+              {analysis.latest_score?.created_at || 'n/a'}
+            </div>
             <div className="score-grid">
               <span>Risk: {analysis.scores.risk.toFixed(1)}</span>
               <span>Quality: {analysis.scores.quality.toFixed(1)}</span>

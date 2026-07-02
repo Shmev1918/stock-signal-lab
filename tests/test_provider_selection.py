@@ -9,7 +9,7 @@ from app.providers.yfinance_provider import YFinanceMarketDataProvider
 
 
 def test_provider_selection_defaults_to_mock(monkeypatch) -> None:
-    monkeypatch.delenv("MARKET_DATA_PROVIDER", raising=False)
+    monkeypatch.setenv("MARKET_DATA_PROVIDER", "mock")
     get_settings.cache_clear()
     assert isinstance(get_market_data_provider(), MockMarketDataProvider)
 

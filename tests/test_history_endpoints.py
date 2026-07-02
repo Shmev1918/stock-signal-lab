@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from datetime import date
+
+from sqlmodel import Session, select
+
+from app.db.models import DailyPrice
+from app.db.session import engine
+
 
 def test_price_endpoint_defaults_to_windowed_desc(client) -> None:
     client.post("/ingest/AAPL")
@@ -14,15 +21,50 @@ def test_score_history_returns_recent_rows(client) -> None:
     client.post("/watchlist/AAPL")
     client.post("/ingest/AAPL")
     client.post("/score/AAPL")
+
+    with Session(engine) as session:
+        prices = session.exec(select(DailyPrice).where(DailyPrice.ticker == "AAPL")).all()
+        assert prices
+        for price in prices:
+            price.price_date = date(2026, 1, 2)
+            session.add(price)
+        session.commit()
+
     client.post("/score/AAPL")
 
     response = client.get("/stocks/AAPL/scores?limit=2")
     assert response.status_code == 200
     rows = response.json()
     assert len(rows) == 2
-    assert rows[0]["scored_at"] >= rows[1]["scored_at"]
+    assert rows[0]["as_of_date"]
+    assert rows[0]["scored_at"]
+    assert rows[1]["scored_at"]
+    assert rows[0]["as_of_date"] > rows[1]["as_of_date"]
     assert rows[0]["model_versions"]["scoring"] == "0.1.0"
     assert rows[0]["strategy_name"] == rows[1]["strategy_name"]
+    assert rows[0]["as_of_date"] != rows[1]["as_of_date"]
+
+
+def test_score_anchors_to_latest_market_snapshot_date(client) -> None:
+    client.post("/watchlist/AAPL")
+    client.post("/ingest/AAPL")
+
+    with Session(engine) as session:
+        prices = session.exec(select(DailyPrice).where(DailyPrice.ticker == "AAPL")).all()
+        assert prices
+        snapshot_date = date(2026, 1, 2)
+        for price in prices:
+            price.price_date = snapshot_date
+            session.add(price)
+        session.commit()
+
+    response = client.post("/score/AAPL")
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["as_of_date"] == "2026-01-02"
+    assert payload["scored_at"]
+    assert payload["strategy_name"] in {"balanced", "conservative_quality", "growth_momentum", "value_recovery"}
 
 
 def test_signal_history_filters(client) -> None:
@@ -44,6 +86,15 @@ def test_analysis_history_and_compact_mode(client) -> None:
     client.post("/ingest/AAPL")
     client.post("/signals/AAPL/generate")
     client.post("/score/AAPL")
+
+    with Session(engine) as session:
+        prices = session.exec(select(DailyPrice).where(DailyPrice.ticker == "AAPL")).all()
+        assert prices
+        for price in prices:
+            price.price_date = date(2026, 1, 2)
+            session.add(price)
+        session.commit()
+
     client.post("/signals/AAPL/generate")
     client.post("/score/AAPL")
 
@@ -51,7 +102,9 @@ def test_analysis_history_and_compact_mode(client) -> None:
     assert history.status_code == 200
     snapshots = history.json()
     assert len(snapshots) == 2
-    assert snapshots[0]["scored_at"] >= snapshots[1]["scored_at"]
+    assert snapshots[0]["as_of_date"] > snapshots[1]["as_of_date"]
+    assert snapshots[0]["scored_at"]
+    assert snapshots[1]["scored_at"]
     assert snapshots[0]["model_versions"]["scoring"] == "0.1.0"
     assert snapshots[0]["data_sources"]["scores"] == "internal"
     assert snapshots[0]["strategy_name"]

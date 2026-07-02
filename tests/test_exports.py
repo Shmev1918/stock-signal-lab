@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import date
+
+from sqlmodel import Session, select
+
+from app.db.models import DailyPrice
+from app.db.session import engine
 
 
 def _seed_analysis_data(client) -> None:
@@ -9,6 +15,15 @@ def _seed_analysis_data(client) -> None:
     client.post("/ingest/AAPL")
     client.post("/signals/AAPL/generate")
     client.post("/score/AAPL")
+
+    with Session(engine) as session:
+        prices = session.exec(select(DailyPrice).where(DailyPrice.ticker == "AAPL")).all()
+        assert prices
+        for price in prices:
+            price.price_date = date(2026, 1, 2)
+            session.add(price)
+        session.commit()
+
     client.post("/signals/AAPL/generate")
     client.post("/score/AAPL")
 
@@ -75,3 +90,20 @@ def test_csv_export_content_type_and_download_header(client) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
     assert response.headers["content-disposition"].startswith("attachment;")
+
+
+def test_distributions_csv_export(client) -> None:
+    for ticker in ["AAPL", "MSFT", "NVDA"]:
+        client.post(f"/watchlist/{ticker}")
+        client.post(f"/ingest/{ticker}")
+        client.post(f"/signals/{ticker}/generate")
+        client.post(f"/score/{ticker}")
+
+    response = client.get("/export/distributions.csv?strategy_name=balanced")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert response.headers["content-disposition"].startswith("attachment;")
+
+    rows = list(csv.DictReader(io.StringIO(response.text)))
+    assert rows
+    assert {"group_type", "name"} <= set(rows[0])

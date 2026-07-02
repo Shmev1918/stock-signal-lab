@@ -14,6 +14,7 @@ from app.services.stock_service import (
     get_latest_fundamental_source,
     get_latest_price_source,
     get_latest_price_date,
+    get_latest_market_snapshot_date,
     get_latest_score,
     get_latest_score_source,
     get_latest_signal_source,
@@ -85,7 +86,8 @@ def _latest_signal_dicts(session: Session, ticker: str) -> list[dict[str, object
         return latest_signals
     from app.services.signal_service import generate_signals
 
-    return signal_dicts(generate_signals(session, ticker, as_of_date=date.today()))
+    snapshot_date = get_latest_market_snapshot_date(session, ticker) or date.today()
+    return signal_dicts(generate_signals(session, ticker, as_of_date=snapshot_date))
 
 
 def _compact_analysis_from_signals(
@@ -187,6 +189,11 @@ def build_analysis(session: Session, ticker: str, compact: bool = False, strateg
         "recommendation": analysis["recommendation"],
         "risk_category": analysis["risk_category"],
         "scores": analysis["scores"],
+        "latest_score": {
+            "as_of_date": analysis["latest_score"]["as_of_date"],
+            "created_at": analysis["latest_score"]["created_at"],
+            "strategy_name": analysis["latest_score"]["strategy_name"],
+        },
         "positive_signals": compact_positive,
         "negative_signals": compact_negative,
         "summary": analysis["summary"],
@@ -274,6 +281,8 @@ def build_strategy_rankings(
                 "risk_score": compact["scores"]["risk"],
                 "summary": compact["summary"],
                 "strategy_name": profile.name,
+                "score_as_of_date": score.as_of_date,
+                "scored_at": score.created_at,
             }
             if include_signals:
                 row["positive_signals"] = compact["positive_signals"]

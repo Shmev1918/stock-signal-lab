@@ -8,7 +8,7 @@ from sqlmodel import Session
 from sqlmodel import select
 
 from app.config import get_settings
-from app.db.models import DailyPrice, Experiment, ExperimentResult, StockScore
+from app.db.models import Experiment, ExperimentResult, StockScore
 from app.experiments.filters import normalize_filters, score_matches_filters, signal_matches_filters
 from app.experiments.outcome import classify_outcome
 from app.experiments.summary import summarize_experiment_results

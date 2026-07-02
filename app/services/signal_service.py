@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from app.db.models import Stock, StockSignal
 from app.signals.base import SignalRecord, signal_severity
 from app.signals.signal_engine import SignalEngine
+from app.services.stock_service import get_latest_market_snapshot_date
 
 
 def _stock_or_raise(session: Session, ticker: str) -> Stock:
@@ -24,7 +25,7 @@ def _stock_or_raise(session: Session, ticker: str) -> Stock:
 
 def generate_signals(session: Session, ticker: str, as_of_date: date | None = None) -> list[StockSignal]:
     engine = SignalEngine()
-    as_of_date = as_of_date or date.today()
+    as_of_date = as_of_date or get_latest_market_snapshot_date(session, ticker) or date.today()
     stock = _stock_or_raise(session, ticker)
     signal_records: list[SignalRecord] = engine.generate(session, ticker, as_of_date=as_of_date)
 

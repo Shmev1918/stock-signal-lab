@@ -17,7 +17,7 @@ router = APIRouter()
 @router.post("/signals/{ticker}/generate")
 def generate_ticker_signals(ticker: str, session: Session = Depends(get_session)):
     try:
-        return signal_dicts(generate_signals(session, ticker.upper(), as_of_date=date.today()))
+        return signal_dicts(generate_signals(session, ticker.upper()))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

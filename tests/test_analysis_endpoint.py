@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from sqlmodel import Session, select
 
@@ -27,6 +27,8 @@ def test_analysis_endpoint_returns_consolidated_view(client) -> None:
     assert isinstance(payload["warnings"], list)
     assert payload["summary"]
     assert payload["latest_score"]["ticker"] == "AAPL"
+    assert payload["latest_score"]["as_of_date"]
+    assert payload["latest_score"]["created_at"]
     assert payload["strategy_name"] in {"balanced", "conservative_quality", "growth_momentum", "value_recovery"}
     assert payload["data_sources"]["prices"] in {"mock", "yfinance"}
     assert payload["data_sources"]["fundamentals"] in {"mock", "yfinance", "yfinance_partial"}

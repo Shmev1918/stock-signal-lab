@@ -11,22 +11,26 @@ from app.scoring.explanation import build_explanation
 from app.scoring.summary import build_summary
 from app.scoring.strategy_profiles import get_strategy_profile
 from app.services.signal_service import generate_signals, signal_dicts
-from app.services.stock_service import get_latest_signals
+from app.services.stock_service import get_latest_market_snapshot_date, get_latest_score_at, get_latest_signal_date_at, get_latest_signals_at
 from app.signals.signal_engine import SignalEngine
 
 
 def _ensure_signals(session: Session, ticker: str, as_of_date: date) -> list[dict[str, object]]:
-    latest_signals = get_latest_signals(session, ticker)
-    if latest_signals:
+    latest_signals = get_latest_signals_at(session, ticker, as_of_date)
+    latest_signal_date = get_latest_signal_date_at(session, ticker, as_of_date)
+    if latest_signals and latest_signal_date == as_of_date:
         return signal_dicts(latest_signals)
     generated = generate_signals(session, ticker, as_of_date=as_of_date)
     return signal_dicts(generated)
 
 
 def score_ticker(session: Session, ticker: str, as_of_date: date | None = None, strategy_name: str | None = None) -> StockScore:
-    as_of_date = as_of_date or date.today()
+    as_of_date = as_of_date or get_latest_market_snapshot_date(session, ticker) or date.today()
     selected_strategy = strategy_name or get_settings().scoring_strategy
     profile = get_strategy_profile(selected_strategy)
+    existing_score = get_latest_score_at(session, ticker, as_of_date, strategy_name=profile.name)
+    if existing_score is not None and existing_score.as_of_date == as_of_date:
+        return existing_score
     signals = _ensure_signals(session, ticker, as_of_date)
     engine = SignalEngine()
     signal_views = [SignalView(signal) for signal in signals]

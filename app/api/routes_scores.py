@@ -1,6 +1,4 @@
 from dataclasses import asdict
-from datetime import date
-
 from fastapi import APIRouter, Depends, Query
 from fastapi import HTTPException
 from sqlmodel import Session
@@ -15,6 +13,16 @@ from app.services.stock_service import get_latest_scores, get_watchlist
 router = APIRouter()
 
 
+def _score_payload(score):
+    payload = score.model_dump()
+    payload["scored_at"] = score.created_at
+    payload["model_versions"] = {
+        "scoring": score.scoring_model_version,
+        "signals": score.signal_model_version,
+    }
+    return payload
+
+
 @router.post("/score/{ticker}")
 def score_one(
     ticker: str,
@@ -23,7 +31,7 @@ def score_one(
 ):
     try:
         selected_strategy = get_strategy_profile(strategy).name if strategy is not None else None
-        return score_ticker(session, ticker.upper(), as_of_date=date.today(), strategy_name=selected_strategy)
+        return _score_payload(score_ticker(session, ticker.upper(), strategy_name=selected_strategy))
     except LookupError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -37,7 +45,7 @@ def score_watchlist(strategy: str | None = Query(default=None), session: Session
     watchlist = get_watchlist(session)
     results = []
     for item in watchlist:
-        results.append(score_ticker(session, item.ticker, as_of_date=date.today(), strategy_name=selected_strategy))
+        results.append(_score_payload(score_ticker(session, item.ticker, strategy_name=selected_strategy)))
     return results
 
 

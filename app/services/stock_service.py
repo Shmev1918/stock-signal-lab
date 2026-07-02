@@ -138,7 +138,7 @@ def get_score_history(
         stmt = stmt.where(StockScore.as_of_date >= start_date)
     if end_date is not None:
         stmt = stmt.where(StockScore.as_of_date <= end_date)
-    stmt = stmt.order_by(StockScore.created_at.desc(), StockScore.as_of_date.desc(), StockScore.id.desc())
+    stmt = stmt.order_by(StockScore.as_of_date.desc(), StockScore.created_at.desc(), StockScore.id.desc())
     if limit > 0:
         stmt = stmt.limit(limit)
     return list(session.exec(stmt))
@@ -292,6 +292,16 @@ def get_latest_price_date(session: Session, ticker: str) -> date | None:
     return price.price_date if price else None
 
 
+def get_latest_market_snapshot_date(session: Session, ticker: str) -> date | None:
+    latest_price_date = get_latest_price_date(session, ticker)
+    if latest_price_date is not None:
+        return latest_price_date
+    latest_signal_date = get_latest_signal_date(session, ticker)
+    if latest_signal_date is not None:
+        return latest_signal_date
+    return None
+
+
 def get_latest_fundamental_date(session: Session, ticker: str) -> date | None:
     fundamental = get_latest_fundamental(session, ticker)
     return fundamental.as_of_date if fundamental else None
@@ -299,6 +309,11 @@ def get_latest_fundamental_date(session: Session, ticker: str) -> date | None:
 
 def get_latest_signal_date(session: Session, ticker: str) -> date | None:
     signals = get_latest_signals(session, ticker)
+    return signals[0].signal_date if signals else None
+
+
+def get_latest_signal_date_at(session: Session, ticker: str, as_of_date: date) -> date | None:
+    signals = get_latest_signals_at(session, ticker, as_of_date)
     return signals[0].signal_date if signals else None
 
 
@@ -414,6 +429,7 @@ def get_analysis_history(
     for score in scores:
         snapshots.append(
             {
+                "as_of_date": score.as_of_date,
                 "scored_at": score.created_at,
                 "recommendation": score.recommendation,
                 "risk_category": score.risk_category,
