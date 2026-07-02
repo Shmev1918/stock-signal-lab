@@ -57,3 +57,27 @@ Date: 2026-07-01
 - confidence model
 - machine learning
 
+## Version 2.1.0
+
+Date: 2026-07-01
+
+## Major Updates
+
+- diagnostics improvements
+- signal normalization fixes
+- congressional trading future feature plan
+- options research plan
+- bootstrap/install hardening
+- LF shell script handling via `.gitattributes`
+- feature registry foundation
+
+## Validation / Release Notes
+
+- `git diff --check` clean
+- docs generation is now driven from signal metadata
+- `bootstrap-dev.sh` remains LF-safe for Windows/WSL checkouts
+
+## Notes
+
+- This release is documentation and workflow focused.
+- No new signals or model tuning were added in this step.

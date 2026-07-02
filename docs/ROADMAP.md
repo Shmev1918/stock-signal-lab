@@ -51,3 +51,16 @@
 - sector comparison
 - dividend/income strategy
 - LLM analyst summaries
+- congressional trading intelligence research branch
+- stock options research branch
+- options-specific backtesting and Greeks-aware features
+- options research plan and small-universe prototype
+
+## Branching Ideas
+
+- congressional disclosures as a separate alternative-data branch
+- stock options as a separate instrument-class research branch
+- keep both branches empirical and small at first
+- use the same experiment and evaluation discipline as equities
+
+See also: [Future Features](FUTURE_FEATURES.md)

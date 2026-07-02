@@ -1,4 +1,4 @@
-.PHONY: up down migrate test lint format refresh rankings evaluate status frontend-install frontend-dev ui reset-db bootstrap reset-dev
+.PHONY: up down migrate test lint format refresh rankings evaluate status frontend-install frontend-dev ui reset-db bootstrap reset-dev feature-registry
 
 up:
 	docker compose up -d --build
@@ -50,3 +50,6 @@ bootstrap:
 
 reset-dev:
 	bash scripts/reset-dev.sh
+
+feature-registry:
+	python3 scripts/generate_feature_registry.py

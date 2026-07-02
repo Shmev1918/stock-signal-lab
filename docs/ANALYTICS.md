@@ -51,6 +51,12 @@ continuous improvement
   - NEUTRAL
   - UNDERPERFORM
 
+## Feature Registry
+
+The canonical signal reference lives in [Feature Registry](FEATURE_REGISTRY.md).
+
+Use it to keep signal names, source fields, normalization formulas, and validation status aligned across code, docs, and experiments.
+
 ## Experiment Engine
 
 Before ML, the system needs a rigorous experiment harness.
