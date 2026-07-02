@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes_analysis import router as analysis_router
+from app.api.routes_acquisition import router as acquisition_router
 from app.api.routes_backtests import router as backtest_router
 from app.api.routes_diagnostics import router as diagnostics_router
 from app.api.routes_experiments import router as experiments_router
@@ -41,6 +42,7 @@ app.add_middleware(
 
 
 app.include_router(health_router)
+app.include_router(acquisition_router)
 app.include_router(watchlist_router)
 app.include_router(stocks_router)
 app.include_router(scores_router)

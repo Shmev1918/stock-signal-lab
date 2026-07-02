@@ -16,8 +16,12 @@
 
 - SEC EDGAR
 - Tiingo
-- Polygon/Massive
+- Polygon/Massive, with the acquisition plan documented in [docs/POLYGON_DATA_ACQUISITION_PLAN.md](POLYGON_DATA_ACQUISITION_PLAN.md) and the readiness layer in [docs/ACQUISITION_INFRASTRUCTURE.md](ACQUISITION_INFRASTRUCTURE.md)
 - Finnhub
+
+## Historical Acquisition Campaign
+
+For the one-time historical archive, see [Historical Data Acquisition Campaign](HISTORICAL_DATA_ACQUISITION_CAMPAIGN.md).
 
 ## Principle
 

@@ -69,6 +69,20 @@ class Dividend(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now, index=True)
 
 
+class StockSplit(SQLModel, table=True):
+    __tablename__ = "stock_splits"
+    id: int | None = Field(default=None, primary_key=True)
+    ticker: str = Field(index=True)
+    execution_date: date = Field(index=True)
+    split_from: float | None = None
+    split_to: float | None = None
+    ratio: float | None = None
+    adjustment_factor: float | None = None
+    raw: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    source: str = Field(default="mock", index=True)
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
 class NewsItem(SQLModel, table=True):
     __tablename__ = "news_items"
     id: int | None = Field(default=None, primary_key=True)
@@ -171,6 +185,67 @@ class BacktestResult(SQLModel, table=True):
     result_type: str = Field(index=True)
     value: float | None = None
     details: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+class ProviderAPICall(SQLModel, table=True):
+    __tablename__ = "provider_api_calls"
+    id: int | None = Field(default=None, primary_key=True)
+    provider: str = Field(index=True)
+    endpoint: str = Field(index=True)
+    request_key: str = Field(index=True)
+    ticker: str | None = Field(default=None, index=True)
+    started_at: datetime = Field(default_factory=datetime.now, index=True)
+    completed_at: datetime | None = Field(default=None, index=True)
+    duration_ms: int | None = None
+    http_status: int | None = Field(default=None, index=True)
+    success: bool = Field(default=False, index=True)
+    retries: int = Field(default=0, index=True)
+    error_message: str | None = None
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+class RawProviderPayload(SQLModel, table=True):
+    __tablename__ = "raw_provider_payloads"
+    id: int | None = Field(default=None, primary_key=True)
+    provider: str = Field(index=True)
+    endpoint: str = Field(index=True)
+    request_key: str = Field(index=True)
+    ticker: str | None = Field(default=None, index=True)
+    payload_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    fetched_at: datetime = Field(default_factory=datetime.now, index=True)
+    normalized: bool = Field(default=False, index=True)
+    normalized_at: datetime | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+class AcquisitionJob(SQLModel, table=True):
+    __tablename__ = "acquisition_jobs"
+    id: int | None = Field(default=None, primary_key=True)
+    job_name: str = Field(index=True)
+    provider: str = Field(index=True)
+    status: str = Field(default="PENDING", index=True)
+    universe_name: str | None = Field(default=None, index=True)
+    config_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    started_at: datetime | None = Field(default=None, index=True)
+    completed_at: datetime | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+class AcquisitionTask(SQLModel, table=True):
+    __tablename__ = "acquisition_tasks"
+    id: int | None = Field(default=None, primary_key=True)
+    job_id: int = Field(foreign_key="acquisition_jobs.id", index=True)
+    task_type: str = Field(index=True)
+    ticker: str | None = Field(default=None, index=True)
+    start_date: date | None = Field(default=None, index=True)
+    end_date: date | None = Field(default=None, index=True)
+    status: str = Field(default="PENDING", index=True)
+    attempts: int = Field(default=0, index=True)
+    last_error: str | None = None
+    rows_imported: int = Field(default=0, index=True)
+    started_at: datetime | None = Field(default=None, index=True)
+    completed_at: datetime | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.now, index=True)
 
 

@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     api_port: int = 8000
     market_data_provider: str = "mock"
     scoring_strategy: str = "balanced"
+    polygon_api_key: str | None = None
+    polygon_rate_limit_per_minute: int = 3
+    polygon_mode: str = "free"
+    polygon_historical_years: int = 2
     default_watchlist: list[str] = Field(
         default_factory=lambda: [
             "AAPL",

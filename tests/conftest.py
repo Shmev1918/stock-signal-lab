@@ -14,19 +14,24 @@ os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
 os.environ["MARKET_DATA_PROVIDER"] = "mock"
 
 from app.db.models import (  # noqa: E402
+    AcquisitionJob,
+    AcquisitionTask,
     BacktestResult,
     BacktestRun,
     Experiment,
     ExperimentResult,
+    ProviderAPICall,
     DailyPrice,
     Dividend,
     Fundamental,
     NewsItem,
     InvestmentDecision,
+    RawProviderPayload,
     Recommendation,
     Stock,
     StockScore,
     StockSignal,
+    StockSplit,
     WatchlistItem,
 )
 from app.db.session import engine, init_db  # noqa: E402
@@ -35,6 +40,8 @@ from sqlmodel import Session  # noqa: E402
 
 
 TABLES = [
+    AcquisitionTask,
+    AcquisitionJob,
     BacktestResult,
     BacktestRun,
     Experiment,
@@ -44,9 +51,12 @@ TABLES = [
     Fundamental,
     NewsItem,
     InvestmentDecision,
+    ProviderAPICall,
+    RawProviderPayload,
     Recommendation,
     StockScore,
     StockSignal,
+    StockSplit,
     WatchlistItem,
     Stock,
 ]

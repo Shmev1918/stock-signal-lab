@@ -27,6 +27,7 @@
 
 - improve yfinance fundamentals warnings
 - evaluate Financial Modeling Prep free tier
+- finish Polygon acquisition infrastructure v1
 - add feature snapshots
 - add hypothesis runner
 - later add ML experiment framework
@@ -51,6 +52,7 @@
 - sector comparison
 - dividend/income strategy
 - LLM analyst summaries
+- historical data acquisition campaign for Polygon/Massive
 - congressional trading intelligence research branch
 - stock options research branch
 - options-specific backtesting and Greeks-aware features
@@ -60,6 +62,7 @@
 
 - congressional disclosures as a separate alternative-data branch
 - stock options as a separate instrument-class research branch
+- historical acquisition as a one-time campaign rather than a permanent subscription
 - keep both branches empirical and small at first
 - use the same experiment and evaluation discipline as equities
 

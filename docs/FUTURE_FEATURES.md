@@ -68,3 +68,11 @@ Like the equity engine, the options branch should stay:
 - free-first when possible
 
 See also: [Options Research Plan](OPTIONS_RESEARCH_PLAN.md)
+
+## Historical Data Acquisition Campaign
+
+This is a one-time or very infrequent acquisition branch for building the long-lived research database.
+
+The goal is to acquire historical equity and options data into PostgreSQL, then stop depending on repeated history downloads.
+
+See also: [Historical Data Acquisition Campaign](HISTORICAL_DATA_ACQUISITION_CAMPAIGN.md)

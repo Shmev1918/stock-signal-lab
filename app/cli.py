@@ -10,6 +10,17 @@ from typing import Any
 from sqlmodel import Session
 
 from app.db.session import engine, init_db
+from app.acquisition.estimates import estimate_acquisition
+from app.acquisition.jobs import (
+    AcquisitionJobCreateRequest,
+    create_acquisition_job,
+    get_acquisition_job,
+    pause_acquisition_job,
+    retry_failed_tasks,
+    resume_acquisition_job,
+    run_acquisition_job,
+)
+from app.config import get_settings
 from app.experiments.runner import ExperimentRequest, get_experiment_summary, list_experiments, run_experiment
 from app.services.health_service import get_health_details
 from app.services.diagnostics_service import get_distribution_diagnostics
@@ -18,6 +29,7 @@ from app.services.analysis_service import build_strategy_rankings
 from app.services.decision_service import get_decision_evaluation
 from app.services.score_evaluation_service import get_score_evaluation
 from app.services.watchlist_service import refresh_watchlist_workflow, watchlist_status_payload
+from app.providers.polygon_provider import PolygonMarketDataProvider
 
 
 def _json_default(value: Any) -> Any:
@@ -84,8 +96,55 @@ def build_parser() -> argparse.ArgumentParser:
     signal_diagnostics.add_argument("--ticker", required=True)
     signal_diagnostics.add_argument("--as-of-date", default=None)
 
+    acquisition = subparsers.add_parser("acquisition", help="Manage acquisition jobs.")
+    acquisition_subparsers = acquisition.add_subparsers(dest="acquisition_command", required=True)
+
+    create_job = acquisition_subparsers.add_parser("create-job", help="Create an acquisition job.")
+    create_job.add_argument("--job-name", required=True)
+    create_job.add_argument("--provider", default="polygon")
+    create_job.add_argument("--universe-name", default="STOCK_RESEARCH_CORE")
+    create_job.add_argument("--years", type=int, default=None)
+    create_job.add_argument("--include-prices", action=argparse.BooleanOptionalAction, default=True)
+    create_job.add_argument("--include-fundamentals", action=argparse.BooleanOptionalAction, default=True)
+    create_job.add_argument("--include-dividends", action=argparse.BooleanOptionalAction, default=True)
+    create_job.add_argument("--include-splits", action=argparse.BooleanOptionalAction, default=True)
+    create_job.add_argument("--include-options", action=argparse.BooleanOptionalAction, default=False)
+    create_job.add_argument("--rate-limit-per-minute", type=int, default=None)
+    create_job.add_argument("--start-date", default=None)
+    create_job.add_argument("--end-date", default=None)
+    create_job.add_argument("--config-json", default="{}")
+
+    run_job = acquisition_subparsers.add_parser("run-job", help="Run an acquisition job.")
+    run_job.add_argument("job_id", type=int)
+    run_job.add_argument("--force", action="store_true")
+
+    status_job = acquisition_subparsers.add_parser("status", help="Show acquisition job status.")
+    status_job.add_argument("job_id", type=int)
+
+    retry_failed = acquisition_subparsers.add_parser("retry-failed", help="Retry failed acquisition tasks.")
+    retry_failed.add_argument("job_id", type=int)
+
+    pause_job = acquisition_subparsers.add_parser("pause", help="Pause an acquisition job.")
+    pause_job.add_argument("job_id", type=int)
+
+    resume_job = acquisition_subparsers.add_parser("resume", help="Resume an acquisition job.")
+    resume_job.add_argument("job_id", type=int)
+
+    estimate_job = acquisition_subparsers.add_parser("estimate", help="Estimate an acquisition campaign.")
+    estimate_job.add_argument("--provider", default="polygon")
+    estimate_job.add_argument("--universe-name", default="STOCK_RESEARCH_CORE")
+    estimate_job.add_argument("--years", type=int, default=2)
+    estimate_job.add_argument("--include-prices", action=argparse.BooleanOptionalAction, default=True)
+    estimate_job.add_argument("--include-fundamentals", action=argparse.BooleanOptionalAction, default=True)
+    estimate_job.add_argument("--include-options", action=argparse.BooleanOptionalAction, default=False)
+    estimate_job.add_argument("--rate-limit-per-minute", type=int, default=3)
+    estimate_job.add_argument("--config-json", default="{}")
+
     subparsers.add_parser("health", help="Show database and model health details.")
     subparsers.add_parser("status", help="Show watchlist status and data sources.")
+    subparsers.add_parser("polygon-smoke-test", help="Smoke test Polygon endpoints without a large import.").add_argument(
+        "--ticker", default="AAPL"
+    )
     return parser
 
 
@@ -174,6 +233,88 @@ def _run_diagnostics_signals(session: Session, args: argparse.Namespace) -> dict
     return get_signal_diagnostics(session, args.ticker, as_of_date=as_of_date)
 
 
+def _run_polygon_smoke_test(args: argparse.Namespace) -> dict[str, object]:
+    settings = get_settings()
+    provider = PolygonMarketDataProvider(
+        api_key=settings.polygon_api_key,
+        mode=settings.polygon_mode,
+    )
+    checks = provider.smoke_checks(args.ticker)
+    return {
+        "provider": "polygon",
+        "api_key_detected": bool(settings.polygon_api_key),
+        "mode": settings.polygon_mode,
+        "checks": [
+            {
+                "name": check.name,
+                "endpoint": check.endpoint,
+                "ticker": check.ticker,
+                "success": check.success,
+                "status_code": check.status_code,
+                "error": check.error,
+            }
+            for check in checks
+        ],
+    }
+
+
+def _run_acquisition_create_job(session: Session, args: argparse.Namespace) -> dict[str, object]:
+    config_json = json.loads(args.config_json or "{}")
+    request = AcquisitionJobCreateRequest(
+        job_name=args.job_name,
+        provider=args.provider,
+        universe_name=args.universe_name,
+        years=args.years if args.years is not None else get_settings().polygon_historical_years,
+        include_prices=args.include_prices,
+        include_fundamentals=args.include_fundamentals,
+        include_dividends=args.include_dividends,
+        include_splits=args.include_splits,
+        include_options=args.include_options,
+        rate_limit_per_minute=(
+            args.rate_limit_per_minute
+            if args.rate_limit_per_minute is not None
+            else get_settings().polygon_rate_limit_per_minute
+        ),
+        start_date=date.fromisoformat(args.start_date) if args.start_date else None,
+        end_date=date.fromisoformat(args.end_date) if args.end_date else None,
+        config_json=config_json,
+    )
+    return create_acquisition_job(session, request)
+
+
+def _run_acquisition_job(session: Session, args: argparse.Namespace) -> dict[str, object]:
+    return run_acquisition_job(session, args.job_id, force=args.force)
+
+
+def _run_acquisition_status(session: Session, args: argparse.Namespace) -> dict[str, object]:
+    return get_acquisition_job(session, args.job_id)
+
+
+def _run_acquisition_pause(session: Session, args: argparse.Namespace) -> dict[str, object]:
+    return pause_acquisition_job(session, args.job_id)
+
+
+def _run_acquisition_resume(session: Session, args: argparse.Namespace) -> dict[str, object]:
+    return resume_acquisition_job(session, args.job_id)
+
+
+def _run_acquisition_retry_failed(session: Session, args: argparse.Namespace) -> dict[str, object]:
+    return retry_failed_tasks(session, args.job_id)
+
+
+def _run_acquisition_estimate(args: argparse.Namespace) -> dict[str, object]:
+    return estimate_acquisition(
+        provider=args.provider,
+        universe_name=args.universe_name,
+        years=args.years,
+        include_prices=args.include_prices,
+        include_fundamentals=args.include_fundamentals,
+        include_options=args.include_options,
+        rate_limit_per_minute=args.rate_limit_per_minute,
+        config_json=json.loads(args.config_json or "{}"),
+    )
+
+
 def _dispatch(session: Session, args: argparse.Namespace) -> Any:
     if args.command == "refresh-watchlist":
         return _run_refresh_watchlist(session, args)
@@ -197,6 +338,24 @@ def _dispatch(session: Session, args: argparse.Namespace) -> Any:
         return _run_diagnostics_distributions(session, args)
     if args.command == "diagnostics-signals":
         return _run_diagnostics_signals(session, args)
+    if args.command == "polygon-smoke-test":
+        return _run_polygon_smoke_test(args)
+    if args.command == "acquisition":
+        if args.acquisition_command == "create-job":
+            return _run_acquisition_create_job(session, args)
+        if args.acquisition_command == "run-job":
+            return _run_acquisition_job(session, args)
+        if args.acquisition_command == "status":
+            return _run_acquisition_status(session, args)
+        if args.acquisition_command == "retry-failed":
+            return _run_acquisition_retry_failed(session, args)
+        if args.acquisition_command == "pause":
+            return _run_acquisition_pause(session, args)
+        if args.acquisition_command == "resume":
+            return _run_acquisition_resume(session, args)
+        if args.acquisition_command == "estimate":
+            return _run_acquisition_estimate(args)
+        raise ValueError(f"Unknown acquisition command: {args.acquisition_command}")
     raise ValueError(f"Unknown command: {args.command}")
 
 

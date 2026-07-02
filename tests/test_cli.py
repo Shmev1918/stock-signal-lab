@@ -285,3 +285,137 @@ def test_cli_experiment_dispatch(monkeypatch, capsys) -> None:
     assert summary_output["experiment_id"] == 1
 
     assert calls == ["run-experiment", "list-experiments", "experiment-summary"]
+
+
+def test_cli_parses_acquisition_commands() -> None:
+    create_args = cli.build_parser().parse_args(
+        [
+            "acquisition",
+            "create-job",
+            "--job-name",
+            "polygon_core",
+            "--provider",
+            "polygon",
+            "--universe-name",
+            "CUSTOM",
+            "--config-json",
+            '{"tickers":["AAPL"]}',
+        ]
+    )
+    assert create_args.command == "acquisition"
+    assert create_args.acquisition_command == "create-job"
+    assert create_args.job_name == "polygon_core"
+    assert create_args.provider == "polygon"
+    assert create_args.universe_name == "CUSTOM"
+
+    run_args = cli.build_parser().parse_args(["acquisition", "run-job", "12", "--force"])
+    assert run_args.acquisition_command == "run-job"
+    assert run_args.job_id == 12
+    assert run_args.force is True
+
+    estimate_args = cli.build_parser().parse_args(["acquisition", "estimate", "--years", "5"])
+    assert estimate_args.acquisition_command == "estimate"
+    assert estimate_args.years == 5
+
+
+def test_cli_acquisition_dispatch(monkeypatch, capsys) -> None:
+    calls: list[str] = []
+
+    def _create_acquisition_job(session, request):
+        calls.append("create")
+        assert request.job_name == "polygon_core"
+        return {"job": {"id": 7, "job_name": request.job_name}}
+
+    def _run_acquisition_job(session, job_id, force=False, provider=None):
+        calls.append("run")
+        assert job_id == 7
+        assert force is True
+        return {"job": {"id": job_id, "status": "COMPLETED"}}
+
+    def _get_acquisition_job(session, job_id):
+        calls.append("status")
+        return {"job": {"id": job_id, "status": "COMPLETED"}}
+
+    def _pause_acquisition_job(session, job_id):
+        calls.append("pause")
+        return {"job": {"id": job_id, "status": "PAUSED"}}
+
+    def _resume_acquisition_job(session, job_id):
+        calls.append("resume")
+        return {"job": {"id": job_id, "status": "PENDING"}}
+
+    def _retry_failed_tasks(session, job_id):
+        calls.append("retry")
+        return {"job": {"id": job_id, "status": "PENDING"}}
+
+    def _estimate_acquisition(**kwargs):
+        calls.append("estimate")
+        return {"provider": kwargs["provider"], "estimated_api_calls": 12}
+
+    class FakePolygonProvider:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def smoke_checks(self, ticker):
+            calls.append("smoke")
+            return [
+                type("Check", (), {"name": "daily_aggregates", "endpoint": "daily_aggregates", "ticker": ticker, "success": True, "status_code": 200, "error": None})()
+            ]
+
+    monkeypatch.setattr(cli, "create_acquisition_job", _create_acquisition_job)
+    monkeypatch.setattr(cli, "run_acquisition_job", _run_acquisition_job)
+    monkeypatch.setattr(cli, "get_acquisition_job", _get_acquisition_job)
+    monkeypatch.setattr(cli, "pause_acquisition_job", _pause_acquisition_job)
+    monkeypatch.setattr(cli, "resume_acquisition_job", _resume_acquisition_job)
+    monkeypatch.setattr(cli, "retry_failed_tasks", _retry_failed_tasks)
+    monkeypatch.setattr(cli, "estimate_acquisition", _estimate_acquisition)
+    monkeypatch.setattr(cli, "PolygonMarketDataProvider", FakePolygonProvider)
+
+    assert (
+        cli.main(
+            [
+                "acquisition",
+                "create-job",
+                "--job-name",
+                "polygon_core",
+                "--provider",
+                "polygon",
+                "--config-json",
+                '{"tickers":["AAPL"]}',
+            ],
+            session_scope=_fake_session_scope,
+        )
+        == 0
+    )
+    create_output = json.loads(capsys.readouterr().out)
+    assert create_output["job"]["id"] == 7
+
+    assert cli.main(["acquisition", "run-job", "7", "--force"], session_scope=_fake_session_scope) == 0
+    run_output = json.loads(capsys.readouterr().out)
+    assert run_output["job"]["status"] == "COMPLETED"
+
+    assert cli.main(["acquisition", "status", "7"], session_scope=_fake_session_scope) == 0
+    status_output = json.loads(capsys.readouterr().out)
+    assert status_output["job"]["status"] == "COMPLETED"
+
+    assert cli.main(["acquisition", "pause", "7"], session_scope=_fake_session_scope) == 0
+    pause_output = json.loads(capsys.readouterr().out)
+    assert pause_output["job"]["status"] == "PAUSED"
+
+    assert cli.main(["acquisition", "resume", "7"], session_scope=_fake_session_scope) == 0
+    resume_output = json.loads(capsys.readouterr().out)
+    assert resume_output["job"]["status"] == "PENDING"
+
+    assert cli.main(["acquisition", "retry-failed", "7"], session_scope=_fake_session_scope) == 0
+    retry_output = json.loads(capsys.readouterr().out)
+    assert retry_output["job"]["status"] == "PENDING"
+
+    assert cli.main(["acquisition", "estimate", "--provider", "polygon"], session_scope=_fake_session_scope) == 0
+    estimate_output = json.loads(capsys.readouterr().out)
+    assert estimate_output["estimated_api_calls"] == 12
+
+    assert cli.main(["polygon-smoke-test", "--ticker", "AAPL"], session_scope=_fake_session_scope) == 0
+    smoke_output = json.loads(capsys.readouterr().out)
+    assert smoke_output["provider"] == "polygon"
+    assert smoke_output["checks"][0]["success"] is True
+    assert calls == ["create", "run", "status", "pause", "resume", "retry", "estimate", "smoke"]
