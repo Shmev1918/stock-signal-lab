@@ -11,7 +11,6 @@ from app.acquisition.checkpoints import task_is_runnable, task_request_key
 from app.acquisition.provider_calls import call_provider
 from app.acquisition.queue import build_queue
 from app.acquisition.raw_payloads import mark_payload_normalized, store_raw_payload
-from app.acquisition.rate_limit import ProviderRateLimiter
 from app.acquisition.reports import build_job_report
 from app.config import get_settings
 from app.db.models import AcquisitionJob, AcquisitionTask, DailyPrice, Dividend, Fundamental, Stock, StockSplit
@@ -45,6 +44,7 @@ class AcquisitionJobCreateRequest(BaseModel):
     universe_name: str = STOCK_RESEARCH_CORE
     years: int = Field(default_factory=lambda: get_settings().polygon_historical_years)
     include_prices: bool = True
+    include_metadata: bool = False
     include_fundamentals: bool = True
     include_dividends: bool = True
     include_splits: bool = True
@@ -73,6 +73,15 @@ def _build_task_specs(request: AcquisitionJobCreateRequest) -> list[dict[str, An
     start_date = request.start_date or (end_date - timedelta(days=365 * max(request.years, 1)))
     task_specs: list[dict[str, Any]] = []
     for ticker in tickers:
+        if request.include_metadata:
+            task_specs.append(
+                {
+                    "task_type": "TICKER_METADATA",
+                    "ticker": ticker,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                }
+            )
         if request.include_prices:
             task_specs.append(
                 {
@@ -133,6 +142,7 @@ def create_acquisition_job(session: Session, request: AcquisitionJobCreateReques
             "tickers": tickers,
             "years": request.years,
             "include_prices": request.include_prices,
+            "include_metadata": request.include_metadata,
             "include_fundamentals": request.include_fundamentals,
             "include_dividends": request.include_dividends,
             "include_splits": request.include_splits,
@@ -202,6 +212,10 @@ def run_acquisition_job(
     job_id: int,
     *,
     force: bool = False,
+    live: bool = False,
+    max_requests: int | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
     provider: Any | None = None,
 ) -> dict[str, Any]:
     job = _get_job_or_raise(session, job_id)
@@ -210,21 +224,32 @@ def run_acquisition_job(
             **build_job_report(session, job_id),
             "warnings": ["Job is paused; resume it before running."],
         }
+    guardrails = None
+    if job.provider.lower() == "polygon":
+        guardrails = _validate_polygon_guardrails(
+            session,
+            job,
+            live=live,
+            max_requests=max_requests,
+            start_date=start_date,
+            end_date=end_date,
+        )
     if job.started_at is None:
         job.started_at = datetime.now()
     job.status = "RUNNING"
     session.add(job)
     session.commit()
 
-    resolved_provider = provider or _resolve_provider(job.provider)
-    rate_limit_per_minute = int(job.config_json.get("rate_limit_per_minute") or get_settings().polygon_rate_limit_per_minute)
-    limiter = ProviderRateLimiter(rate_limit_per_minute) if job.provider.lower() == "polygon" else None
+    resolved_provider = provider or _resolve_provider(
+        job.provider,
+        rate_limit_per_minute=int(job.config_json.get("rate_limit_per_minute") or get_settings().polygon_rate_limit_per_minute),
+    )
     tasks = list(session.exec(select(AcquisitionTask).where(AcquisitionTask.job_id == job.id)))
     for queue_item in build_queue(tasks):
         task = session.get(AcquisitionTask, queue_item.task_id)
         if task is None or not task_is_runnable(task, force=force):
             continue
-        _run_task(session, job, task, resolved_provider, limiter, force=force)
+        _run_task(session, job, task, resolved_provider, force=force)
 
     remaining_failed = list(
         session.exec(
@@ -245,7 +270,10 @@ def run_acquisition_job(
         job.completed_at = datetime.now()
     session.add(job)
     session.commit()
-    return build_job_report(session, job_id)
+    report = build_job_report(session, job_id)
+    if guardrails is not None:
+        report["guardrails"] = guardrails
+    return report
 
 
 def _run_task(
@@ -253,7 +281,6 @@ def _run_task(
     job: AcquisitionJob,
     task: AcquisitionTask,
     provider: Any,
-    limiter: ProviderRateLimiter | None,
     *,
     force: bool,
 ) -> None:
@@ -264,7 +291,7 @@ def _run_task(
     session.commit()
     request_key = task_request_key(job.id or 0, task, force=force)
     try:
-        rows_imported = _dispatch_task(session, job, task, provider, limiter, request_key)
+        rows_imported = _dispatch_task(session, job, task, provider, request_key)
         task.status = "COMPLETED"
         task.rows_imported = rows_imported
         task.last_error = None
@@ -286,13 +313,12 @@ def _dispatch_task(
     job: AcquisitionJob,
     task: AcquisitionTask,
     provider: Any,
-    limiter: ProviderRateLimiter | None,
     request_key: str,
 ) -> int:
     handler = _TASK_HANDLERS.get(task.task_type)
     if handler is None:
         raise NotImplementedError(f"Task type {task.task_type} is not implemented yet")
-    return handler(session, job, task, provider, limiter, request_key)
+    return handler(session, job, task, provider, request_key)
 
 
 def _handle_daily_prices(
@@ -300,7 +326,6 @@ def _handle_daily_prices(
     job: AcquisitionJob,
     task: AcquisitionTask,
     provider: Any,
-    limiter: ProviderRateLimiter | None,
     request_key: str,
 ) -> int:
     ticker = task.ticker or ""
@@ -318,7 +343,6 @@ def _handle_daily_prices(
         endpoint="daily_prices",
         request_key=f"{request_key}:daily_prices",
         ticker=ticker,
-        rate_limiter=limiter,
         func=lambda: provider.get_daily_prices(ticker, start_date, end_date),
     )
     price_payload = {"results": price_result.value}
@@ -340,7 +364,6 @@ def _handle_daily_prices(
             endpoint="ticker_details",
             request_key=f"{request_key}:ticker_details",
             ticker=ticker,
-            rate_limiter=limiter,
             func=lambda: provider.get_company_profile(ticker),
         )
         raw_profile = store_raw_payload(
@@ -365,7 +388,6 @@ def _handle_fundamentals(
     job: AcquisitionJob,
     task: AcquisitionTask,
     provider: Any,
-    limiter: ProviderRateLimiter | None,
     request_key: str,
 ) -> int:
     ticker = task.ticker or ""
@@ -375,7 +397,6 @@ def _handle_fundamentals(
         endpoint="fundamentals",
         request_key=f"{request_key}:fundamentals",
         ticker=ticker,
-        rate_limiter=limiter,
         func=lambda: provider.get_fundamentals(ticker),
     ).value
     raw = store_raw_payload(
@@ -396,7 +417,6 @@ def _handle_dividends(
     job: AcquisitionJob,
     task: AcquisitionTask,
     provider: Any,
-    limiter: ProviderRateLimiter | None,
     request_key: str,
 ) -> int:
     ticker = task.ticker or ""
@@ -406,7 +426,6 @@ def _handle_dividends(
         endpoint="dividends",
         request_key=f"{request_key}:dividends",
         ticker=ticker,
-        rate_limiter=limiter,
         func=lambda: provider.get_dividends(ticker),
     ).value
     raw = store_raw_payload(
@@ -427,7 +446,6 @@ def _handle_splits(
     job: AcquisitionJob,
     task: AcquisitionTask,
     provider: Any,
-    limiter: ProviderRateLimiter | None,
     request_key: str,
 ) -> int:
     ticker = task.ticker or ""
@@ -437,7 +455,6 @@ def _handle_splits(
         endpoint="splits",
         request_key=f"{request_key}:splits",
         ticker=ticker,
-        rate_limiter=limiter,
         func=lambda: provider.get_splits(ticker) if hasattr(provider, "get_splits") else [],
     ).value
     raw = store_raw_payload(
@@ -458,12 +475,11 @@ def _handle_corporate_actions(
     job: AcquisitionJob,
     task: AcquisitionTask,
     provider: Any,
-    limiter: ProviderRateLimiter | None,
     request_key: str,
 ) -> int:
     rows = 0
-    rows += _handle_dividends(session, job, task, provider, limiter, f"{request_key}:corp")
-    rows += _handle_splits(session, job, task, provider, limiter, f"{request_key}:corp")
+    rows += _handle_dividends(session, job, task, provider, f"{request_key}:corp")
+    rows += _handle_splits(session, job, task, provider, f"{request_key}:corp")
     return rows
 
 
@@ -472,7 +488,6 @@ def _handle_options_contracts(
     job: AcquisitionJob,
     task: AcquisitionTask,
     provider: Any,
-    limiter: ProviderRateLimiter | None,
     request_key: str,
 ) -> int:
     ticker = task.ticker or ""
@@ -484,7 +499,6 @@ def _handle_options_contracts(
         endpoint="options_chain_snapshot",
         request_key=f"{request_key}:options_chain_snapshot",
         ticker=ticker,
-        rate_limiter=limiter,
         func=lambda: provider.get_options_chain_snapshot(ticker),
     ).value
     raw = store_raw_payload(
@@ -499,18 +513,47 @@ def _handle_options_contracts(
     return 0
 
 
+def _handle_ticker_metadata(
+    session: Session,
+    job: AcquisitionJob,
+    task: AcquisitionTask,
+    provider: Any,
+    request_key: str,
+) -> int:
+    ticker = task.ticker or ""
+    payload = call_provider(
+        session,
+        provider=job.provider,
+        endpoint="ticker_details",
+        request_key=f"{request_key}:ticker_details",
+        ticker=ticker,
+        func=lambda: provider.get_company_profile(ticker),
+    ).value
+    raw = store_raw_payload(
+        session,
+        provider=job.provider,
+        endpoint="ticker_details",
+        request_key=f"{request_key}:ticker_details",
+        ticker=ticker,
+        payload=payload,
+    )
+    rows = _upsert_stock_reference(session, payload)
+    mark_payload_normalized(session, raw)
+    return rows
+
+
 def _handle_unimplemented(
     session: Session,
     job: AcquisitionJob,
     task: AcquisitionTask,
     provider: Any,
-    limiter: ProviderRateLimiter,
     request_key: str,
 ) -> int:
     raise NotImplementedError(f"Task type {task.task_type} is scaffolded but not yet implemented")
 
 
-_TASK_HANDLERS: dict[str, Callable[[Session, AcquisitionJob, AcquisitionTask, Any, ProviderRateLimiter, str], int]] = {
+_TASK_HANDLERS: dict[str, Callable[[Session, AcquisitionJob, AcquisitionTask, Any, str], int]] = {
+    "TICKER_METADATA": _handle_ticker_metadata,
     "DAILY_PRICES": _handle_daily_prices,
     "FUNDAMENTALS": _handle_fundamentals,
     "DIVIDENDS": _handle_dividends,
@@ -636,7 +679,7 @@ def _upsert_splits(session: Session, rows: list[dict[str, Any]]) -> int:
     return count
 
 
-def _resolve_provider(provider_name: str) -> Any:
+def _resolve_provider(provider_name: str, *, rate_limit_per_minute: int | None = None) -> Any:
     normalized = provider_name.lower()
     if normalized == "mock":
         return MockMarketDataProvider()
@@ -645,10 +688,72 @@ def _resolve_provider(provider_name: str) -> Any:
         return PolygonMarketDataProvider(
             api_key=settings.polygon_api_key,
             mode=settings.polygon_mode,
+            rate_limit_per_minute=rate_limit_per_minute or int(settings.polygon_rate_limit_per_minute or 3),
         )
     if normalized == "yfinance":
         return get_market_data_provider("yfinance")
     raise LookupError(f"Unsupported acquisition provider: {provider_name}")
+
+
+def _validate_polygon_guardrails(
+    session: Session,
+    job: AcquisitionJob,
+    *,
+    live: bool,
+    max_requests: int | None,
+    start_date: date | None,
+    end_date: date | None,
+) -> dict[str, Any]:
+    if not live:
+        raise ValueError("Polygon acquisition requires --live to run")
+    if start_date is None or end_date is None:
+        raise ValueError("Polygon acquisition requires --start-date and --end-date")
+    rate_limit_per_minute = int(job.config_json.get("rate_limit_per_minute") or get_settings().polygon_rate_limit_per_minute)
+    if rate_limit_per_minute <= 0:
+        raise ValueError("Polygon acquisition requires a positive rate limit")
+    estimated_requests = _estimate_polygon_request_count(session, job)
+    if max_requests is None:
+        raise ValueError("Polygon acquisition requires --max-requests")
+    if estimated_requests > max_requests:
+        raise ValueError(
+            f"Estimated Polygon request count {estimated_requests} exceeds max_requests {max_requests}"
+        )
+    return {
+        "provider": "polygon",
+        "live": True,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "estimated_requests": estimated_requests,
+        "max_requests": max_requests,
+        "rate_limit_per_minute": rate_limit_per_minute,
+        "task_count": _job_task_count(session, job.id or 0),
+    }
+
+
+def _estimate_polygon_request_count(session: Session, job: AcquisitionJob) -> int:
+    tasks = list(session.exec(select(AcquisitionTask).where(AcquisitionTask.job_id == job.id)))
+    return sum(_polygon_task_request_weight(task.task_type) for task in tasks)
+
+
+def _polygon_task_request_weight(task_type: str) -> int:
+    return {
+        "TICKER_METADATA": 1,
+        "DAILY_PRICES": 2,
+        "FUNDAMENTALS": 1,
+        "DIVIDENDS": 1,
+        "SPLITS": 1,
+        "CORPORATE_ACTIONS": 2,
+        "FINANCIAL_STATEMENTS": 1,
+        "EARNINGS": 1,
+        "OPTIONS_CONTRACTS": 1,
+        "OPTIONS_AGGREGATES": 1,
+        "OPTIONS_TRADES": 1,
+        "OPTIONS_QUOTES": 1,
+    }.get(task_type, 1)
+
+
+def _job_task_count(session: Session, job_id: int) -> int:
+    return len(list(session.exec(select(AcquisitionTask).where(AcquisitionTask.job_id == job_id))))
 
 
 def _get_job_or_raise(session: Session, job_id: int) -> AcquisitionJob:

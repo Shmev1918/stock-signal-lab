@@ -50,6 +50,8 @@ provider → ingestion → Postgres → signals → strategies → scores → ra
 - [Data Provider Plan](docs/DATA_PROVIDER_PLAN.md)
 - [Historical Data Acquisition Campaign](docs/HISTORICAL_DATA_ACQUISITION_CAMPAIGN.md)
 - [Historical Data Acquisition Runbook](docs/HISTORICAL_DATA_ACQUISITION_RUNBOOK.md)
+- [Polygon Stock Campaign Plan](docs/POLYGON_STOCK_CAMPAIGN_PLAN.md)
+- [Polygon Provider Notes](docs/polygon-provider.md)
 - [Polygon Data Acquisition Plan](docs/POLYGON_DATA_ACQUISITION_PLAN.md)
 - [Acquisition Infrastructure](docs/ACQUISITION_INFRASTRUCTURE.md)
 - [Future Features](docs/FUTURE_FEATURES.md)
@@ -85,6 +87,12 @@ make test
 Alembic owns the Postgres schema. App startup does not create or alter Postgres tables.
 
 Use `make migrate` to apply migrations and `make reset-db` to destroy local dev data and rebuild the schema from scratch.
+
+For acquisition readiness, run:
+
+```bash
+python -m app.cli acquisition readiness-report
+```
 
 ## Local UI
 

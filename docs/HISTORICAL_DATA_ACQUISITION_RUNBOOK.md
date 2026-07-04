@@ -6,6 +6,7 @@ It is intentionally short. The detailed planning lives in:
 
 - [Historical Data Acquisition Campaign](HISTORICAL_DATA_ACQUISITION_CAMPAIGN.md)
 - [Polygon Data Acquisition Plan](POLYGON_DATA_ACQUISITION_PLAN.md)
+- [Polygon Stock Campaign Plan](POLYGON_STOCK_CAMPAIGN_PLAN.md)
 - [Data Provider Plan](DATA_PROVIDER_PLAN.md)
 - [Options Research Plan](OPTIONS_RESEARCH_PLAN.md)
 - [Roadmap](ROADMAP.md)
@@ -72,6 +73,49 @@ Only after this checklist is green should the Polygon month begin.
 2. Back up PostgreSQL.
 3. Export an archive.
 4. Cancel or downgrade the subscription.
+
+## Stock-Only Campaign Runner
+
+The stock-only campaign runner is the structured way to move Polygon data into PostgreSQL.
+
+Dry-run:
+
+```bash
+python -m app.cli acquisition campaign plan \
+  --config configs/stock_historical_campaign.yml
+```
+
+Live execution requires:
+
+- `--live`
+- `--max-files`
+- `--max-bytes`
+- `--max-requests` for REST phases
+
+The runner executes the phases in order:
+
+1. readiness report
+2. `stocks_daily` flat files
+3. corporate actions REST
+4. security reference REST
+5. financial statements REST
+6. earnings / ratios REST when implemented
+
+Phase 1 is blocked until valid Massive S3 flat-file credentials exist.
+
+For live phase 1 execution:
+
+```bash
+python -m app.cli acquisition campaign run \
+  --config configs/stock_historical_campaign.yml \
+  --phase 1 \
+  --live \
+  --max-files 5000 \
+  --max-bytes 1000000000 \
+  --min-free-bytes 1649267441664
+```
+
+The default `--min-free-bytes` threshold is 1.5 TiB. Reduce it only if the target disk has been verified.
 
 ## Operational Commands
 

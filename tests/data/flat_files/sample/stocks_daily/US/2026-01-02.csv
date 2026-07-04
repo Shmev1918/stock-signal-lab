@@ -1,0 +1,4 @@
+ticker,price_date,open,high,low,close,adj_close,volume,source
+AAPL,2026-01-02,250.0,252.0,248.5,251.2,251.2,100000000,sample_flat_file
+MSFT,2026-01-02,410.0,412.5,408.8,411.1,411.1,50000000,sample_flat_file
+SPY,2026-01-02,600.0,602.0,598.5,601.3,601.3,80000000,sample_flat_file

@@ -68,3 +68,33 @@ def test_acquisition_routes_create_pause_resume_run_and_estimate(client) -> None
     estimate = estimate_response.json()
     assert estimate["provider"] == "polygon"
     assert estimate["estimated_api_calls"] > 0
+
+
+def test_acquisition_routes_reject_polygon_run_without_live_flag(client) -> None:
+    create_response = client.post(
+        "/acquisition/jobs",
+        json={
+            "job_name": "polygon_guard",
+            "provider": "polygon",
+            "universe_name": "CUSTOM",
+            "years": 1,
+            "include_prices": True,
+            "include_metadata": False,
+            "include_fundamentals": False,
+            "include_dividends": False,
+            "include_splits": False,
+            "include_options": False,
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-05",
+            "config_json": {"tickers": ["AAPL"]},
+        },
+    )
+    assert create_response.status_code == 200
+    job_id = create_response.json()["job"]["id"]
+
+    run_response = client.post(
+        f"/acquisition/jobs/{job_id}/run",
+        params={"max_requests": 10, "start_date": "2026-01-01", "end_date": "2026-01-05"},
+    )
+    assert run_response.status_code == 400
+    assert "--live" in run_response.json()["detail"]

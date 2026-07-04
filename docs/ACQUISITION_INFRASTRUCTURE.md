@@ -48,6 +48,49 @@ The smoke test reports:
 
 The smoke test should be run before any paid acquisition campaign.
 
+## Readiness Report
+
+Use the readiness report to inspect the local acquisition environment without calling Polygon:
+
+```bash
+python -m app.cli acquisition readiness-report
+```
+
+Add `--json` for automation and `--strict` if you want a nonzero exit code when any check is WARN or FAIL.
+
+### From Host
+
+Run the command from your shell when you want to validate how the host environment sees the database URL.
+
+If the configured database hostname is Docker-only, the report may show DNS or TCP failures on the host even when the stack is healthy inside containers.
+
+### From Docker
+
+Run the command inside the application container when you want to validate container-to-container connectivity:
+
+```bash
+docker compose exec app python -m app.cli acquisition readiness-report
+```
+
+This is the correct view when the database hostname is only resolvable inside Docker networking.
+
+## Stock Campaign Runner
+
+The stock-only campaign runner is documented in:
+
+- [Polygon Stock Campaign Plan](POLYGON_STOCK_CAMPAIGN_PLAN.md)
+
+The runner keeps the full acquisition order explicit:
+
+1. readiness report
+2. `stocks_daily` flat files
+3. corporate actions REST
+4. security reference REST
+5. financial statements REST
+6. earnings / ratios REST when implemented
+
+Dry-run is the default. Live execution requires caps and stays blocked until the Massive S3 flat-file credentials exist.
+
 ## Create a Dry-Run Acquisition Job
 
 Creating a job does not start provider calls.

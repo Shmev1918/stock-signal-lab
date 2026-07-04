@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, JSON, String, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -20,6 +20,23 @@ class StockBase(SQLModel):
 class Stock(StockBase, table=True):
     __tablename__ = "stocks"
     id: int | None = Field(default=None, primary_key=True)
+
+
+class Security(SQLModel, table=True):
+    __tablename__ = "securities"
+    __table_args__ = (UniqueConstraint("provider", "symbol"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    symbol: str = Field(index=True)
+    provider: str = Field(default="sample", index=True)
+    asset_type: str | None = None
+    exchange: str | None = None
+    name: str | None = None
+    active: bool = Field(default=True, index=True)
+    first_seen_date: date | None = Field(default=None, index=True)
+    last_seen_date: date | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+    updated_at: datetime = Field(default_factory=datetime.now, index=True)
 
 
 class DailyPrice(SQLModel, table=True):
@@ -219,6 +236,82 @@ class RawProviderPayload(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now, index=True)
 
 
+class FlatFileManifest(SQLModel, table=True):
+    __tablename__ = "flat_file_manifests"
+
+    id: int | None = Field(default=None, primary_key=True)
+    provider: str = Field(index=True)
+    dataset: str = Field(index=True)
+    market: str | None = Field(default=None, index=True)
+    file_date: date | None = Field(default=None, index=True)
+    remote_path: str = Field(sa_column=Column(String, unique=True, index=True))
+    local_path: str | None = Field(default=None, index=True)
+    checksum: str | None = Field(default=None, index=True)
+    compressed_size: int | None = None
+    uncompressed_size: int | None = None
+    download_status: str = Field(default="PENDING", index=True)
+    ingest_status: str = Field(default="PENDING", index=True)
+    normalize_status: str = Field(default="PENDING", index=True)
+    downloaded_at: datetime | None = Field(default=None, index=True)
+    ingested_at: datetime | None = Field(default=None, index=True)
+    normalized_at: datetime | None = Field(default=None, index=True)
+    error_message: str | None = None
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+class RawPolygonStockDailyBar(SQLModel, table=True):
+    __tablename__ = "raw_polygon_stock_daily_bars"
+    __table_args__ = (UniqueConstraint("source_manifest_id", "row_number"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    source_manifest_id: int = Field(foreign_key="flat_file_manifests.id", index=True)
+    row_number: int = Field(index=True)
+    ticker: str | None = Field(default=None, index=True)
+    price_date: date | None = Field(default=None, index=True)
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
+    adj_close: float | None = None
+    volume: int | None = None
+    source: str = Field(default="sample", index=True)
+    raw_row: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+class StockDailyPrice(SQLModel, table=True):
+    __tablename__ = "stock_daily_prices"
+    __table_args__ = (UniqueConstraint("source_manifest_id", "security_id", "price_date"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    source_manifest_id: int = Field(foreign_key="flat_file_manifests.id", index=True)
+    security_id: int | None = Field(default=None, foreign_key="securities.id", index=True)
+    symbol: str = Field(index=True)
+    ticker: str | None = Field(default=None, index=True)
+    price_date: date = Field(index=True)
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float
+    adj_close: float | None = None
+    volume: int | None = None
+    source: str = Field(default="sample", index=True)
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+class FlatFileQualityEvent(SQLModel, table=True):
+    __tablename__ = "flat_file_quality_events"
+
+    id: int | None = Field(default=None, primary_key=True)
+    source_manifest_id: int = Field(foreign_key="flat_file_manifests.id", index=True)
+    row_number: int | None = Field(default=None, index=True)
+    severity: str = Field(index=True)
+    issue_code: str = Field(index=True)
+    message: str
+    raw_row: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
 class AcquisitionJob(SQLModel, table=True):
     __tablename__ = "acquisition_jobs"
     id: int | None = Field(default=None, primary_key=True)
@@ -247,6 +340,59 @@ class AcquisitionTask(SQLModel, table=True):
     started_at: datetime | None = Field(default=None, index=True)
     completed_at: datetime | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+class CampaignRun(SQLModel, table=True):
+    __tablename__ = "campaign_runs"
+
+    id: int | None = Field(default=None, primary_key=True)
+    campaign_name: str = Field(index=True)
+    config_path: str | None = Field(default=None, index=True)
+    config_hash: str = Field(index=True)
+    provider: str = Field(index=True)
+    universe_name: str | None = Field(default=None, index=True)
+    market: str | None = Field(default=None, index=True)
+    status: str = Field(default="PLANNED", index=True)
+    live: bool = Field(default=False, index=True)
+    current_phase: int | None = Field(default=None, index=True)
+    config_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    audit_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    warning_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    error_message: str | None = None
+    started_at: datetime | None = Field(default=None, index=True)
+    completed_at: datetime | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+    updated_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+class CampaignPhaseRun(SQLModel, table=True):
+    __tablename__ = "campaign_phase_runs"
+    __table_args__ = (UniqueConstraint("campaign_id", "phase_number"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    campaign_id: int = Field(foreign_key="campaign_runs.id", index=True)
+    phase_number: int = Field(index=True)
+    phase_name: str = Field(index=True)
+    phase_type: str = Field(index=True)
+    status: str = Field(default="PLANNED", index=True)
+    mode: str = Field(default="diagnostic", index=True)
+    description: str | None = None
+    config_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    estimate_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    audit_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    blocker: str | None = None
+    acquisition_job_id: int | None = Field(default=None, index=True)
+    rows_imported: int = Field(default=0, index=True)
+    files_total: int = Field(default=0, index=True)
+    files_downloaded: int = Field(default=0, index=True)
+    files_ingested: int = Field(default=0, index=True)
+    files_normalized: int = Field(default=0, index=True)
+    files_skipped: int = Field(default=0, index=True)
+    files_failed: int = Field(default=0, index=True)
+    started_at: datetime | None = Field(default=None, index=True)
+    completed_at: datetime | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+    updated_at: datetime = Field(default_factory=datetime.now, index=True)
 
 
 class Experiment(SQLModel, table=True):

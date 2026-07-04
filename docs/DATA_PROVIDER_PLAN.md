@@ -18,6 +18,7 @@
 - Tiingo
 - Polygon/Massive, with the acquisition plan documented in [docs/POLYGON_DATA_ACQUISITION_PLAN.md](POLYGON_DATA_ACQUISITION_PLAN.md) and the readiness layer in [docs/ACQUISITION_INFRASTRUCTURE.md](ACQUISITION_INFRASTRUCTURE.md)
 - Finnhub
+- Polygon provider notes: [docs/polygon-provider.md](polygon-provider.md)
 
 ## Historical Acquisition Campaign
 

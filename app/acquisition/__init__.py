@@ -1,4 +1,14 @@
 from app.acquisition.estimates import estimate_acquisition
+from app.acquisition.campaign import (
+    StockCampaignRequest,
+    build_stock_only_campaign_plan,
+    campaign_audit_report,
+    campaign_status_report,
+    load_stock_campaign_config,
+    plan_stock_campaign,
+    run_stock_campaign_phase,
+    run_stock_only_campaign,
+)
 from app.acquisition.jobs import (
     AcquisitionJobCreateRequest,
     OPTIONS_RESEARCH_CORE,
@@ -14,14 +24,22 @@ from app.acquisition.jobs import (
 
 __all__ = [
     "AcquisitionJobCreateRequest",
+    "StockCampaignRequest",
     "OPTIONS_RESEARCH_CORE",
     "STOCK_RESEARCH_CORE",
     "create_acquisition_job",
     "estimate_acquisition",
+    "build_stock_only_campaign_plan",
+    "campaign_audit_report",
+    "campaign_status_report",
+    "load_stock_campaign_config",
+    "plan_stock_campaign",
     "get_acquisition_job",
     "list_acquisition_jobs",
     "pause_acquisition_job",
     "retry_failed_tasks",
     "resume_acquisition_job",
+    "run_stock_campaign_phase",
     "run_acquisition_job",
+    "run_stock_only_campaign",
 ]

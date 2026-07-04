@@ -1,0 +1,81 @@
+campaign_name: stock_historical_campaign
+provider: polygon
+universe_name: STOCK_RESEARCH_CORE
+market: US
+staging_dir: flat_file_staging
+start_date: 1995-01-01
+end_date: current
+
+phases:
+  - phase: 0
+    name: readiness-report
+    type: readiness
+    description: Inspect local readiness without calling Polygon.
+
+  - phase: 1
+    name: stocks_daily-flat-files
+    type: flat_files
+    dataset: stocks_daily
+    start_date: 1995-01-01
+    end_date: current
+    description: Bulk stock history via Massive flat files into staging -> raw landing -> canonical prices.
+
+  - phase: 2
+    name: corporate-actions-rest
+    type: rest
+    datasets:
+      - dividends
+      - splits
+    job_flags:
+      include_prices: false
+      include_metadata: false
+      include_fundamentals: false
+      include_dividends: true
+      include_splits: true
+      include_options: false
+    description: Dividend and split backfill via Polygon REST.
+
+  - phase: 3
+    name: security-reference-rest
+    type: rest
+    datasets:
+      - security_reference
+    job_flags:
+      include_prices: false
+      include_metadata: true
+      include_fundamentals: false
+      include_dividends: false
+      include_splits: false
+      include_options: false
+    description: Ticker/reference metadata normalization via Polygon REST.
+
+  - phase: 4
+    name: financial-statements-rest
+    type: rest
+    datasets:
+      - financial_statements
+      - ratios
+    job_flags:
+      include_prices: false
+      include_metadata: false
+      include_fundamentals: true
+      include_dividends: false
+      include_splits: false
+      include_options: false
+    description: Financial statements and fundamentals normalization via Polygon REST.
+
+  - phase: 5
+    name: earnings-ratios-rest
+    type: rest
+    implemented: false
+    datasets:
+      - earnings
+      - ratios
+    job_flags:
+      include_prices: false
+      include_metadata: false
+      include_fundamentals: false
+      include_dividends: false
+      include_splits: false
+      include_options: false
+    description: Earnings and ratios REST is planned but not yet wired into the runner.

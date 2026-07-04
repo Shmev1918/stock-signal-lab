@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
@@ -47,12 +48,26 @@ def create_job(request: AcquisitionJobCreateRequest, session: Session = Depends(
 def run_job(
     job_id: int,
     force: bool = Query(default=False),
+    live: bool = Query(default=False),
+    max_requests: int | None = Query(default=None, ge=1),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
     session: Session = Depends(get_session),
 ):
     try:
-        return run_acquisition_job(session, job_id, force=force)
+        return run_acquisition_job(
+            session,
+            job_id,
+            force=force,
+            live=live,
+            max_requests=max_requests,
+            start_date=start_date,
+            end_date=end_date,
+        )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/jobs/{job_id}/pause")
@@ -118,6 +133,7 @@ def smoke_test(ticker: str = Query(default="AAPL")):
     provider = PolygonMarketDataProvider(
         api_key=settings.polygon_api_key,
         mode=settings.polygon_mode,
+        rate_limit_per_minute=settings.polygon_rate_limit_per_minute,
     )
     try:
         checks = provider.smoke_checks(ticker)
@@ -130,9 +146,12 @@ def smoke_test(ticker: str = Query(default="AAPL")):
                     "name": check.name,
                     "endpoint": check.endpoint,
                     "ticker": check.ticker,
-                    "success": check.success,
-                    "status_code": check.status_code,
-                    "error": check.error,
+                    "status": getattr(check, "status", "PASS" if getattr(check, "success", False) else "FAIL"),
+                    "success": getattr(check, "success", getattr(check, "status", "FAIL") == "PASS"),
+                    "status_code": getattr(check, "status_code", None),
+                    "error": getattr(check, "error", None),
+                    "cause": getattr(check, "cause", "UNKNOWN"),
+                    "rate_limited": getattr(check, "rate_limited", False),
                 }
                 for check in checks
             ],

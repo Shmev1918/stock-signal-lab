@@ -1,0 +1,4 @@
+ticker,price_date,open,high,low,close,adj_close,volume,source
+AAPL,2026-01-05,252.0,255.0,251.0,254.4,254.4,110000000,sample_flat_file
+NVDA,2026-01-05,130.0,133.0,129.2,132.4,132.4,90000000,sample_flat_file
+SPY,2026-01-05,602.0,605.0,600.5,604.8,604.8,82000000,sample_flat_file
